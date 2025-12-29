@@ -482,6 +482,16 @@ const App = {
         reader.onload = (e) => {
             try {
                 const data = JSON.parse(e.target.result);
+                
+                // Debug: log the structure
+                console.log("Loaded JSON keys:", Object.keys(data));
+                console.log("Has nodes?", !!data.nodes);
+                console.log("Has groups?", !!data.groups);
+                if (data.nodes) {
+                    console.log("Node keys sample:", Object.keys(data.nodes).slice(0, 10));
+                    console.log("Has root?", !!data.nodes.root);
+                }
+                
                 const success = POE2Data.loadFromJSON(data);
                 
                 if (success) {
@@ -503,7 +513,7 @@ const App = {
                     
                     console.log("Keystones found:", Object.values(POE2Data.keystones).map(k => k.name));
                 } else {
-                    alert('Failed to parse tree data. Please check the file format.');
+                    alert('Failed to parse tree data. Check browser console for details.');
                 }
             } catch (err) {
                 console.error('Failed to load data file:', err);

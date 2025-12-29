@@ -120,47 +120,83 @@ const POE2Data = {
      */
     loadFromJSON: function(jsonData) {
         try {
-            console.log("Loading tree data...");
+            console.log("=== Loading tree data ===");
             this.clear();
             
             // Store version
             if (jsonData.tree) {
                 this.version = jsonData.tree;
+                console.log("Tree version:", this.version);
             }
             
             // Store groups for positioning
             if (jsonData.groups) {
                 this.groups = jsonData.groups;
+                console.log("Groups loaded:", Object.keys(this.groups).length);
             }
             
-            // CRITICAL: Find class start nodes from root
-            if (jsonData.nodes && jsonData.nodes.root) {
+            // Check for nodes
+            if (!jsonData.nodes) {
+                console.error("ERROR: No 'nodes' property in JSON!");
+                console.log("Available keys:", Object.keys(jsonData));
+                return false;
+            }
+            
+            console.log("Total raw nodes:", Object.keys(jsonData.nodes).length);
+            
+            // Find class start nodes from root
+            if (jsonData.nodes.root) {
                 const rootOut = jsonData.nodes.root.out || [];
+                console.log("Root.out nodes:", rootOut);
                 rootOut.forEach((nodeId, index) => {
                     this.classStartNodes[index] = String(nodeId);
                 });
-                console.log("Class start nodes:", this.classStartNodes);
+                console.log("Class start nodes mapped:", this.classStartNodes);
+            } else {
+                console.warn("WARNING: No root node found in tree.json");
+                // Try to find class starts another way - look for spc property
+                Object.keys(jsonData.nodes).forEach(nodeId => {
+                    const node = jsonData.nodes[nodeId];
+                    if (node.spc && node.spc.length > 0) {
+                        node.spc.forEach(classIndex => {
+                            this.classStartNodes[classIndex] = String(nodeId);
+                        });
+                    }
+                });
+                console.log("Found class starts via spc:", this.classStartNodes);
             }
             
             // Parse ALL nodes
-            if (jsonData.nodes) {
-                this.parseAllNodes(jsonData.nodes);
-            }
+            console.log("Parsing nodes...");
+            this.parseAllNodes(jsonData.nodes);
             
             // Build complete connection graph
+            console.log("Building connection graph...");
             this.buildConnectionGraph(jsonData.nodes);
             
             this.isLoaded = true;
             
-            console.log(`Loaded: ${Object.keys(this.keystones).length} keystones, ` +
-                        `${Object.keys(this.notables).length} notables, ` +
-                        `${Object.keys(this.smallNodes).length} small nodes, ` +
-                        `${Object.keys(this.travelNodes).length} travel nodes`);
+            console.log("=== Load complete ===");
+            console.log(`Keystones: ${Object.keys(this.keystones).length}`);
+            console.log(`Notables: ${Object.keys(this.notables).length}`);
+            console.log(`Small nodes: ${Object.keys(this.smallNodes).length}`);
+            console.log(`Travel nodes: ${Object.keys(this.travelNodes).length}`);
+            console.log(`Total in allNodes: ${Object.keys(this.allNodes).length}`);
             console.log(`Total connections: ${Object.keys(this.connections).length}`);
+            
+            if (Object.keys(this.keystones).length === 0) {
+                console.warn("WARNING: No keystones found! Checking node structure...");
+                // Sample a few nodes to see their structure
+                const sampleIds = Object.keys(jsonData.nodes).slice(0, 5);
+                sampleIds.forEach(id => {
+                    console.log(`Sample node ${id}:`, JSON.stringify(jsonData.nodes[id]).slice(0, 200));
+                });
+            }
             
             return true;
         } catch (e) {
             console.error("Failed to load tree data:", e);
+            console.error("Stack:", e.stack);
             return false;
         }
     },
@@ -169,32 +205,49 @@ const POE2Data = {
      * Parse all nodes from tree.json
      */
     parseAllNodes: function(nodes) {
+        let parsed = 0;
+        let skipped = { mastery: 0, jewel: 0, ascendancy: 0 };
+        let types = { keystone: 0, notable: 0, small: 0, travel: 0 };
+        
         Object.keys(nodes).forEach(nodeId => {
             if (nodeId === 'root') return; // Skip the special root node
             
             const rawNode = nodes[nodeId];
             
+            // Skip if not an object
+            if (typeof rawNode !== 'object' || rawNode === null) {
+                return;
+            }
+            
             // Skip mastery nodes and jewel sockets
-            if (rawNode.isMastery || rawNode.isJewelSocket) {
+            if (rawNode.isMastery) {
+                skipped.mastery++;
+                return;
+            }
+            if (rawNode.isJewelSocket) {
+                skipped.jewel++;
                 return;
             }
             
             // Skip ascendancy nodes for now (they're separate)
             if (rawNode.ascendancyName) {
+                skipped.ascendancy++;
                 return;
             }
             
-            // Determine node type
+            // Determine node type - check multiple possible property names
             let type = 'small';
-            if (rawNode.ks === true) {
+            if (rawNode.ks === true || rawNode.isKeystone === true) {
                 type = 'keystone';
-            } else if (rawNode.not === true) {
+                types.keystone++;
+            } else if (rawNode.not === true || rawNode.isNotable === true) {
                 type = 'notable';
+                types.notable++;
             }
             
-            // Get stats
-            const stats = rawNode.sd || [];
-            const name = rawNode.dn || `Node ${nodeId}`;
+            // Get stats - check multiple possible property names
+            const stats = rawNode.sd || rawNode.stats || rawNode.reminderText || [];
+            const name = rawNode.dn || rawNode.name || rawNode.displayName || `Node ${nodeId}`;
             
             // Calculate scores
             const scores = this.calculateNodeScores(stats, rawNode);
@@ -207,7 +260,7 @@ const POE2Data = {
                 id: String(nodeId),
                 name: name,
                 type: type,
-                stats: stats,
+                stats: Array.isArray(stats) ? stats : [],
                 tags: tags,
                 offense: scores.offense,
                 defense: scores.defense,
@@ -217,13 +270,14 @@ const POE2Data = {
                 // Position info
                 group: rawNode.g,
                 // Attribute bonuses
-                str: rawNode.sa || 0,
-                dex: rawNode.da || 0,
-                int: rawNode.ia || 0
+                str: rawNode.sa || rawNode.strengthAdded || 0,
+                dex: rawNode.da || rawNode.dexterityAdded || 0,
+                int: rawNode.ia || rawNode.intelligenceAdded || 0
             };
             
             // Store in allNodes for pathfinding
             this.allNodes[nodeId] = node;
+            parsed++;
             
             // Categorize based on type and stats
             if (type === 'keystone') {
@@ -232,11 +286,18 @@ const POE2Data = {
                 this.notables[nodeId] = node;
             } else if (stats.length > 0 || node.str > 0 || node.dex > 0 || node.int > 0) {
                 this.smallNodes[nodeId] = node;
+                types.small++;
             } else {
                 // Travel node (no stats, just for pathing)
                 this.travelNodes[nodeId] = node;
+                types.travel++;
             }
         });
+        
+        console.log("Parse complete:");
+        console.log("  Parsed:", parsed);
+        console.log("  Skipped:", skipped);
+        console.log("  Types:", types);
     },
     
     /**
