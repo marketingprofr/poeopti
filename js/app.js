@@ -372,17 +372,18 @@ const App = {
         const notables = results.allocatedNodes.filter(n => n.type === 'notable' && !n.isStub);
         
         // Class mapping for PoB2 (POE2 classes) - from actual PoB2 export
+        // classId is for tree, classInternalId is internal reference
         const classMap = {
-            'warrior': { id: 1, name: 'Warrior' },
-            'marauder': { id: 2, name: 'Marauder' },
-            'ranger': { id: 0, name: 'Ranger' },
-            'mercenary': { id: 3, name: 'Mercenary' },
-            'sorceress': { id: 4, name: 'Sorceress' },
-            'witch': { id: 5, name: 'Witch' },
-            'monk': { id: 6, name: 'Monk' }
+            'warrior': { id: 1, internalId: 1, name: 'Warrior' },
+            'marauder': { id: 2, internalId: 3, name: 'Marauder' },
+            'ranger': { id: 0, internalId: 2, name: 'Ranger' },
+            'mercenary': { id: 3, internalId: 4, name: 'Mercenary' },
+            'sorceress': { id: 4, internalId: 5, name: 'Sorceress' },
+            'witch': { id: 5, internalId: 6, name: 'Witch' },
+            'monk': { id: 6, internalId: 7, name: 'Monk' }
         };
         
-        const classInfo = classMap[TreeOptimizer.config.className?.toLowerCase()] || { id: 0, name: 'Ranger' };
+        const classInfo = classMap[TreeOptimizer.config.className?.toLowerCase()] || { id: 0, internalId: 2, name: 'Ranger' };
         
         // Generate PoB2 XML in the exact format from a real export
         const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -405,14 +406,16 @@ Total Points: ${results.totalPoints}</Notes>
 	<TreeView searchStr="" showStatDifferences="true" zoomY="0" zoomX="0" zoomLevel="3"/>
 	<Import exportParty="false"/>
 	<Tree activeSpec="1">
-		<Spec ascendClassId="0" classId="${classInfo.id}" treeVersion="04" nodes="${nodeList}" SecondaryAscendClassId="nil" ascendancyInternalId="" masteryEffects="" ClassInternalId="${classInfo.id}">
+		<Spec ascendClassId="0" classId="${classInfo.id}" treeVersion="0_4" nodes="${nodeList}" secondaryAscendClassId="nil" ascendancyInternalId="" masteryEffects="" classInternalId="${classInfo.internalId}">
 			<URL>
 			</URL>
 			<Sockets/>
-			<Overrides/>
+			<Overrides>
+				<AttributeOverride strNodes="" dexNodes="" intNodes=""/>
+			</Overrides>
 		</Spec>
 	</Tree>
-	<Party append="false" showAdvancedTools="false" destination="All"/>
+	<Party append="false" ShowAdvanceTools="false" destination="All"/>
 	<Skills activeSkillSet="1" sortGemsByDPS="true" sortGemsByDPSField="CombinedDPS" showSupportGemTypes="ALL" defaultGemQuality="0" defaultGemLevel="normalMaximum">
 		<SkillSet id="1"/>
 	</Skills>
