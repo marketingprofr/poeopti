@@ -484,12 +484,20 @@ const App = {
                 const data = JSON.parse(e.target.result);
                 
                 // Debug: log the structure
-                console.log("Loaded JSON keys:", Object.keys(data));
-                console.log("Has nodes?", !!data.nodes);
-                console.log("Has groups?", !!data.groups);
-                if (data.nodes) {
-                    console.log("Node keys sample:", Object.keys(data.nodes).slice(0, 10));
-                    console.log("Has root?", !!data.nodes.root);
+                console.log("=== TREE.JSON LOADED ===");
+                console.log("File size:", e.target.result.length, "bytes");
+                console.log("Top-level keys:", Object.keys(data));
+                
+                // Check what format we have
+                let nodes = data.nodes || data;
+                console.log("Node count:", Object.keys(nodes).length);
+                
+                // Sample a node to see structure
+                const keys = Object.keys(nodes).filter(k => k !== 'root');
+                if (keys.length > 0) {
+                    const sampleNode = nodes[keys[0]];
+                    console.log("Sample node ID:", keys[0]);
+                    console.log("Sample node:", JSON.stringify(sampleNode, null, 2).substring(0, 500));
                 }
                 
                 const success = POE2Data.loadFromJSON(data);
@@ -508,12 +516,18 @@ const App = {
                     const keystoneCount = Object.keys(POE2Data.keystones).length;
                     const notableCount = Object.keys(POE2Data.notables).length;
                     const smallCount = Object.keys(POE2Data.smallNodes).length;
+                    const totalNodes = Object.keys(POE2Data.allNodes).length;
                     
-                    this.showToast(`Loaded: ${keystoneCount} keystones, ${notableCount} notables, ${smallCount} small nodes`);
+                    const msg = `Loaded: ${keystoneCount} keystones, ${notableCount} notables, ${smallCount} small (${totalNodes} total)`;
+                    this.showToast(msg);
                     
-                    console.log("Keystones found:", Object.values(POE2Data.keystones).map(k => k.name));
+                    console.log("=== LOAD SUMMARY ===");
+                    console.log(msg);
+                    console.log("Keystones:", Object.values(POE2Data.keystones).map(k => k.name).join(', '));
+                    console.log("Class starts:", POE2Data.classStartNodes);
+                    console.log("Connections count:", Object.keys(POE2Data.connections).length);
                 } else {
-                    alert('Failed to parse tree data. Check browser console for details.');
+                    alert('Failed to parse tree data. Check browser console (F12) for details.');
                 }
             } catch (err) {
                 console.error('Failed to load data file:', err);
