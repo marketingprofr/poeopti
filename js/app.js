@@ -408,6 +408,7 @@ Total Points: ${results.totalPoints}</Notes>
 	<Tree activeSpec="1">
 		<Spec ascendClassId="0" classId="${classInfo.id}" treeVersion="0_4" nodes="${nodeList}" secondaryAscendClassId="nil" ascendancyInternalId="" masteryEffects="" classInternalId="${classInfo.internalId}">
 			<URL>
+				https://www.pathofexile.com/passive-skill-tree/AAAABgAAAAAA
 			</URL>
 			<Sockets/>
 			<Overrides>
