@@ -210,10 +210,43 @@ input[type="range"]::-webkit-slider-thumb {
     box-shadow: 0 4px 12px rgba(196, 163, 90, 0.3);
 }
 
+.btn-primary:disabled {
+    background: #555;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.btn-primary:disabled:hover {
+    transform: none;
+    box-shadow: none;
+}
+
 .btn-secondary {
     background: var(--bg-dark);
     border: 1px solid var(--border-color);
     color: var(--text-primary);
+}
+
+/* Warning box lists */
+.warning-box ol {
+    margin: 15px 0;
+    padding-left: 25px;
+    color: var(--text-primary);
+}
+
+.warning-box ol li {
+    margin: 8px 0;
+}
+
+.warning-box code {
+    background: var(--bg-dark);
+    padding: 2px 6px;
+    border-radius: 3px;
+    color: var(--accent-gold);
+}
+
+.warning-box a {
+    color: var(--accent-gold);
 }
 
 .btn-secondary:hover {

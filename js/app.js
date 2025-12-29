@@ -87,6 +87,14 @@ const App = {
             const select = document.getElementById(selectId);
             select.innerHTML = '<option value="">-- None --</option>';
             
+            if (keystones.length === 0) {
+                const placeholder = document.createElement('option');
+                placeholder.disabled = true;
+                placeholder.textContent = '(Load tree.json first)';
+                select.appendChild(placeholder);
+                return;
+            }
+            
             // Group by offense/defense
             const offenseGroup = document.createElement('optgroup');
             offenseGroup.label = 'Offense';
@@ -112,10 +120,31 @@ const App = {
                 }
             });
             
-            select.appendChild(offenseGroup);
-            select.appendChild(defenseGroup);
-            select.appendChild(hybridGroup);
+            if (offenseGroup.children.length > 0) select.appendChild(offenseGroup);
+            if (defenseGroup.children.length > 0) select.appendChild(defenseGroup);
+            if (hybridGroup.children.length > 0) select.appendChild(hybridGroup);
         });
+        
+        // Update UI based on data state
+        this.updateDataStatus();
+    },
+    
+    /**
+     * Update UI to show data loading status
+     */
+    updateDataStatus: function() {
+        const noDataWarning = document.getElementById('noDataWarning');
+        const optimizeBtn = document.getElementById('optimizeBtn');
+        
+        if (POE2Data.isLoaded) {
+            noDataWarning.classList.add('hidden');
+            optimizeBtn.disabled = false;
+            optimizeBtn.innerHTML = '<span class="btn-icon">⚡</span> Optimize Tree';
+        } else {
+            noDataWarning.classList.remove('hidden');
+            optimizeBtn.disabled = true;
+            optimizeBtn.innerHTML = '<span class="btn-icon">⚠️</span> Load Tree Data First';
+        }
     },
     
     /**
@@ -152,6 +181,18 @@ const App = {
      */
     runOptimization: function() {
         if (this.state.isLoading) return;
+        
+        // Check if data is loaded
+        if (!POE2Data.isLoaded) {
+            this.showToast('Please load tree.json first!');
+            return;
+        }
+        
+        const nodeCount = Object.keys(POE2Data.getAllNodes()).length;
+        if (nodeCount === 0) {
+            this.showToast('No nodes loaded. Please check your tree.json file.');
+            return;
+        }
         
         this.state.isLoading = true;
         this.showLoading(true);
@@ -407,9 +448,22 @@ const App = {
                 
                 if (success) {
                     this.state.hasRealData = true;
+                    
+                    // Refresh UI with loaded data
                     this.populateKeystones();
+                    this.updateDataStatus();
+                    
+                    // Hide warning
                     document.getElementById('noDataWarning').classList.add('hidden');
-                    this.showToast('Tree data loaded successfully!');
+                    
+                    // Show success message with stats
+                    const keystoneCount = Object.keys(POE2Data.keystones).length;
+                    const notableCount = Object.keys(POE2Data.notables).length;
+                    const smallCount = Object.keys(POE2Data.smallNodes).length;
+                    
+                    this.showToast(`Loaded: ${keystoneCount} keystones, ${notableCount} notables, ${smallCount} small nodes`);
+                    
+                    console.log("Keystones found:", Object.values(POE2Data.keystones).map(k => k.name));
                 } else {
                     alert('Failed to parse tree data. Please check the file format.');
                 }

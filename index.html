@@ -128,9 +128,9 @@
                     <input type="number" id="pointBudget" value="128" min="1" max="128">
                 </div>
 
-                <button id="optimizeBtn" class="btn-primary">
-                    <span class="btn-icon">⚡</span>
-                    Optimize Tree
+                <button id="optimizeBtn" class="btn-primary" disabled>
+                    <span class="btn-icon">⚠️</span>
+                    Load Tree Data First
                 </button>
             </section>
 
@@ -186,15 +186,17 @@
                 </div>
 
                 <div id="noDataWarning" class="warning-box">
-                    <h3>⚠️ Sample Data Mode</h3>
-                    <p>This tool is running with sample/mock data. For accurate results, you'll need to import real POE2 passive tree data.</p>
-                    <p>The tree data structure is ready to accept data from:</p>
-                    <ul>
-                        <li>Path of Building POE2 (tree.json)</li>
-                        <li>POE2DB API</li>
-                        <li>Official GGG exports when available</li>
-                    </ul>
-                    <button id="loadDataBtn" class="btn-secondary">Load Tree Data (JSON)</button>
+                    <h3>📁 Load Tree Data Required</h3>
+                    <p>Before using the optimizer, you need to load the POE2 passive tree data:</p>
+                    <ol>
+                        <li>Download <code>tree.json</code> from <a href="https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/tree/dev/src/TreeData" target="_blank">POB-POE2 TreeData</a></li>
+                        <li>Look in the folder matching your game version (e.g., <code>0_3</code>)</li>
+                        <li>Click the button below to load the file</li>
+                    </ol>
+                    <button id="loadDataBtn" class="btn-primary" style="margin-top: 15px;">
+                        <span class="btn-icon">📂</span>
+                        Load tree.json
+                    </button>
                     <input type="file" id="dataFileInput" accept=".json" class="hidden">
                 </div>
             </section>
