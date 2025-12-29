@@ -419,26 +419,26 @@ const POE2Data = {
         let travelCount = 0;
         
         Object.keys(nodes).forEach(nodeId => {
-            // Skip non-object entries
+            // Skip non-object entries and root
             const rawNode = nodes[nodeId];
-            if (!rawNode || typeof rawNode !== 'object') {
+            if (!rawNode || typeof rawNode !== 'object' || nodeId === 'root') {
                 return;
             }
             
-            // Get basic info
+            // Get basic info - handle both POE format (dn, sd) and other formats (name, stats)
             const name = rawNode.name || rawNode.dn || `Node ${nodeId}`;
             const stats = rawNode.stats || rawNode.sd || [];
             const icon = rawNode.icon || '';
             
-            // Determine type from icon path or name patterns
+            // Determine type - POE format uses ks (keystone) and not (notable) booleans
             let type = 'small';
             
-            // Check for keystone
-            if (rawNode.isKeystone || /keystone/i.test(icon) || /keystone/i.test(name)) {
+            // Check for keystone - POE format uses 'ks: true'
+            if (rawNode.ks === true || rawNode.isKeystone || /keystone/i.test(icon) || /keystone/i.test(name)) {
                 type = 'keystone';
             }
-            // Check for notable - larger icon, or specific icon patterns
-            else if (rawNode.isNotable || /notable/i.test(icon) || 
+            // Check for notable - POE format uses 'not: true'
+            else if (rawNode.not === true || rawNode.isNotable || /notable/i.test(icon) || 
                      /Notable|Mastery|Large/i.test(icon) ||
                      this.isLikelyNotable(rawNode, stats)) {
                 type = 'notable';
@@ -450,8 +450,9 @@ const POE2Data = {
             // Extract tags
             const tags = this.extractTags(stats, icon, rawNode);
             
-            // Get connections (handling the {id, orbit} format)
-            const connectionIds = this.extractConnectionIds(rawNode.connections);
+            // Get connections - POE format uses 'out' array, other formats use 'connections'
+            const outConnections = rawNode.out || rawNode.connections || [];
+            const connectionIds = this.extractConnectionIds(outConnections);
             
             const node = {
                 id: String(nodeId),
@@ -463,12 +464,12 @@ const POE2Data = {
                 defense: scores.defense,
                 icon: icon,
                 connections: connectionIds,
-                group: rawNode.group,
-                orbit: rawNode.orbit,
-                orbitIndex: rawNode.orbitIndex,
+                group: rawNode.group || rawNode.g,
+                orbit: rawNode.orbit || rawNode.o,
+                orbitIndex: rawNode.orbitIndex || rawNode.oidx,
                 skill: rawNode.skill,
                 // Track if this is a "valuable" node or just travel
-                isTravel: stats.length === 0 && !rawNode.isAttribute
+                isTravel: stats.length === 0 && !rawNode.isAttribute && !rawNode.sa && !rawNode.da && !rawNode.ia
             };
             
             // ALWAYS add to allNodes (needed for pathfinding)
@@ -481,7 +482,7 @@ const POE2Data = {
             } else if (type === 'notable') {
                 this.notables[nodeId] = node;
                 notableCount++;
-            } else if (stats.length > 0 || rawNode.isAttribute) {
+            } else if (stats.length > 0 || rawNode.isAttribute || rawNode.sa || rawNode.da || rawNode.ia) {
                 this.smallNodes[nodeId] = node;
                 smallCount++;
             } else {
@@ -547,7 +548,9 @@ const POE2Data = {
             const rawNode = nodes[nodeId];
             if (!rawNode || typeof rawNode !== 'object') return;
             
-            const connectionIds = this.extractConnectionIds(rawNode.connections);
+            // POE format uses 'out' array, other formats might use 'connections'
+            const outConnections = rawNode.out || rawNode.connections || [];
+            const connectionIds = this.extractConnectionIds(outConnections);
             
             if (!this.connections[nodeId]) {
                 this.connections[nodeId] = [];
