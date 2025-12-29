@@ -163,7 +163,6 @@ const POE2Data = {
     getReachableNodesForClass: function(className) {
         return this.classReachableNodes[className?.toLowerCase()] || new Set();
     },
-    },
     
     /**
      * Get class for ascendancy
