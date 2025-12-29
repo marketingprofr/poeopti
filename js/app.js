@@ -371,7 +371,7 @@ const App = {
         const keystones = results.allocatedNodes.filter(n => n.type === 'keystone' && !n.isStub);
         const notables = results.allocatedNodes.filter(n => n.type === 'notable' && !n.isStub);
         
-        // Class mapping for PoB
+        // Class mapping for PoB (POE2 classes)
         const classMap = {
             'warrior': { id: 1, name: 'Warrior' },
             'marauder': { id: 2, name: 'Marauder' },
@@ -384,7 +384,7 @@ const App = {
         
         const classInfo = classMap[TreeOptimizer.config.className?.toLowerCase()] || { id: 1, name: 'Warrior' };
         
-        // Generate PoB XML file
+        // Generate PoB XML in the correct format
         const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <PathOfBuilding>
 	<Build level="90" targetVersion="2_0" className="${classInfo.name}" ascendClassName="None" mainSocketGroup="1" viewMode="TREE">
@@ -404,37 +404,62 @@ Total Points: ${results.totalPoints}</Notes>
 	</Items>
 </PathOfBuilding>`;
         
-        // Create downloadable file
-        const blob = new Blob([xml], { type: 'application/xml' });
-        const url = URL.createObjectURL(blob);
-        const filename = `poe2-build-${classInfo.name.toLowerCase()}-${Date.now()}.xml`;
+        // Compress with zlib and encode to base64
+        let pobCode = null;
+        try {
+            if (typeof pako !== 'undefined') {
+                // Compress with zlib (deflate with header, level 9)
+                const compressed = pako.deflate(xml, { level: 9 });
+                
+                // Convert to base64 with URL-safe characters
+                let binary = '';
+                for (let i = 0; i < compressed.length; i++) {
+                    binary += String.fromCharCode(compressed[i]);
+                }
+                pobCode = btoa(binary)
+                    .replace(/\+/g, '-')
+                    .replace(/\//g, '_');
+                    
+                console.log("Generated PoB code length:", pobCode.length);
+            }
+        } catch (e) {
+            console.error("Compression failed:", e);
+        }
         
-        // Show modal with download and instructions
+        // Copy to clipboard
+        if (pobCode) {
+            this.copyToClipboard(pobCode);
+        }
+        
+        // Show modal
         const modal = document.createElement('div');
         modal.className = 'export-modal';
         modal.innerHTML = `
-            <div class="export-modal-content" style="max-width: 600px;">
+            <div class="export-modal-content" style="max-width: 700px;">
                 <h3>📋 Export to Path of Building</h3>
                 
-                <div class="export-section" style="text-align: center; padding: 20px; background: rgba(218,165,32,0.1); border: 1px solid var(--accent-gold); border-radius: 8px;">
-                    <h4 style="color: var(--accent-gold); margin-bottom: 15px;">⬇️ Download Build File</h4>
-                    <a href="${url}" download="${filename}" class="btn-primary" style="display: inline-block; text-decoration: none; padding: 12px 24px; font-size: 16px;" onclick="setTimeout(() => App.showToast('File downloaded!'), 100)">
-                        Download ${filename}
-                    </a>
+                ${pobCode ? `
+                <div class="export-section" style="background: rgba(0,255,0,0.1); border: 1px solid #0f0; border-radius: 8px; padding: 15px;">
+                    <h4 style="color: #0f0;">✅ PoB Code Generated (Copied to clipboard!)</h4>
+                    <textarea readonly class="node-list-display" style="height: 100px; font-size: 11px;" id="pobCodeArea">${pobCode}</textarea>
+                    <button class="btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('pobCodeArea').value); App.showToast('Copied!');">Copy Code</button>
                 </div>
                 
                 <div class="export-instructions">
-                    <h4>How to open in Path of Building:</h4>
+                    <h4>How to import in Path of Building 2:</h4>
                     <ol>
-                        <li>Click the download button above</li>
                         <li>Open <strong>Path of Building 2</strong></li>
-                        <li>Click <strong>"New"</strong> to start fresh</li>
-                        <li>Click <strong>"Open Build"</strong> (or File → Open)</li>
-                        <li>Navigate to your Downloads folder</li>
-                        <li>Select the <strong>${filename}</strong> file</li>
-                        <li>Your tree should now be loaded!</li>
+                        <li>Click <strong>"Import/Export Build"</strong> (top left)</li>
+                        <li>In the "Build Sharing" section, paste the code</li>
+                        <li>Click <strong>"Import"</strong></li>
                     </ol>
                 </div>
+                ` : `
+                <div class="export-section" style="background: rgba(255,0,0,0.1); border: 1px solid #f00; border-radius: 8px; padding: 15px;">
+                    <h4 style="color: #f00;">❌ Could not generate PoB code</h4>
+                    <p>The pako compression library failed to load.</p>
+                </div>
+                `}
                 
                 <div class="export-section">
                     <h4>📊 Build Summary</h4>
@@ -452,10 +477,12 @@ Total Points: ${results.totalPoints}</Notes>
                     <button class="btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('nodeIdsArea').value); App.showToast('Copied!');">Copy IDs</button>
                 </div>
                 
-                <button class="btn-primary" onclick="URL.revokeObjectURL('${url}'); this.parentElement.parentElement.remove()">Close</button>
+                <button class="btn-primary" onclick="this.parentElement.parentElement.remove()">Close</button>
             </div>
         `;
         document.body.appendChild(modal);
+        
+        this.showToast(pobCode ? 'PoB code copied!' : 'Export generated');
     },
     
     /**
