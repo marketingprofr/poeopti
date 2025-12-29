@@ -384,9 +384,9 @@ const App = {
         
         const classInfo = classMap[TreeOptimizer.config.className?.toLowerCase()] || { id: 1, name: 'Warrior' };
         
-        // Generate PoB XML in the correct format
+        // Generate PoB XML in the correct format for POE2
         const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<PathOfBuilding>
+<PathOfBuilding2>
 	<Build level="90" targetVersion="2_0" className="${classInfo.name}" ascendClassName="None" mainSocketGroup="1" viewMode="TREE">
 	</Build>
 	<Tree activeSpec="1">
@@ -402,7 +402,7 @@ Total Points: ${results.totalPoints}</Notes>
 	</Skills>
 	<Items>
 	</Items>
-</PathOfBuilding>`;
+</PathOfBuilding2>`;
         
         // Compress with zlib and encode to base64
         let pobCode = null;
