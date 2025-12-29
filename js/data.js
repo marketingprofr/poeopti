@@ -26,6 +26,9 @@ const POE2Data = {
     // Class start nodes
     classStartNodes: {},
     
+    // Nodes reachable from each class (computed after loading)
+    classReachableNodes: {},
+    
     // Groups for positioning
     groups: {},
     
@@ -42,6 +45,7 @@ const POE2Data = {
         this.smallNodes = {};
         this.connections = {};
         this.classStartNodes = {};
+        this.classReachableNodes = {};
         this.groups = {};
         this.rawData = null;
         this.isLoaded = false;
@@ -98,6 +102,67 @@ const POE2Data = {
         // Return first available
         const starts = Object.values(this.classStartNodes);
         return starts.length > 0 ? starts[0] : null;
+    },
+    
+    /**
+     * Compute which nodes are reachable from each class (run after loading)
+     */
+    computeClassReachableNodes: function() {
+        const classNames = ['warrior', 'marauder', 'ranger', 'mercenary', 'sorceress', 'witch', 'monk'];
+        const allClassStarts = new Set(Object.values(this.classStartNodes));
+        
+        classNames.forEach((className, idx) => {
+            const startNodeId = this.classStartNodes[idx];
+            if (!startNodeId) {
+                this.classReachableNodes[className] = new Set();
+                return;
+            }
+            
+            // BFS from class start, but DON'T cross into other class start areas
+            const reachable = new Set();
+            const visited = new Set();
+            const queue = [startNodeId];
+            
+            while (queue.length > 0) {
+                const nodeId = queue.shift();
+                if (visited.has(nodeId)) continue;
+                visited.add(nodeId);
+                
+                // Skip other class start nodes (don't cross into their territory)
+                if (nodeId !== startNodeId && allClassStarts.has(nodeId)) {
+                    continue;
+                }
+                
+                reachable.add(nodeId);
+                
+                const neighbors = this.connections[nodeId] || [];
+                for (const neighbor of neighbors) {
+                    if (!visited.has(neighbor)) {
+                        queue.push(neighbor);
+                    }
+                }
+            }
+            
+            this.classReachableNodes[className] = reachable;
+            console.log(`Class ${className}: ${reachable.size} reachable nodes from start ${startNodeId}`);
+        });
+    },
+    
+    /**
+     * Check if a node is reachable from a specific class
+     */
+    isNodeReachableFromClass: function(nodeId, className) {
+        const reachable = this.classReachableNodes[className?.toLowerCase()];
+        if (!reachable) return true; // If not computed, allow all
+        return reachable.has(String(nodeId));
+    },
+    
+    /**
+     * Get all reachable nodes for a class
+     */
+    getReachableNodesForClass: function(className) {
+        return this.classReachableNodes[className?.toLowerCase()] || new Set();
+    },
     },
     
     /**
@@ -161,6 +226,9 @@ const POE2Data = {
             
             // Build connection graph
             this.buildConnections(nodes);
+            
+            // Compute which nodes are reachable from each class
+            this.computeClassReachableNodes();
             
             this.isLoaded = true;
             

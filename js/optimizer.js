@@ -101,10 +101,16 @@ const TreeOptimizer = {
         this.allocateNode(this.config.startNodeId);
         console.log("After allocating start, total points:", this.results.totalPoints);
         
-        // Step 2: Path to required keystones first
+        // Step 2: Path to required keystones first (only if reachable from this class)
         for (const keystoneId of this.config.requiredKeystones) {
             if (!keystoneId || !POE2Data.keystones[keystoneId]) continue;
             if (this.results.totalPoints >= this.config.maxPoints) break;
+            
+            // Check if keystone is reachable from this class
+            if (!POE2Data.isNodeReachableFromClass(keystoneId, this.config.className)) {
+                console.log("Keystone not reachable from", this.config.className + ":", POE2Data.keystones[keystoneId].name);
+                continue;
+            }
             
             console.log("Pathing to required keystone:", POE2Data.keystones[keystoneId].name);
             const success = this.pathToNode(keystoneId);
@@ -211,11 +217,18 @@ const TreeOptimizer = {
     
     /**
      * Find shortest path from any allocated node to target
+     * Only goes through nodes reachable from the selected class
      */
     findPathFromAllocated: function(targetId) {
         targetId = String(targetId);
+        const className = this.config.className;
         
         if (this.results.allocatedIds.has(targetId)) return [];
+        
+        // Check if target is reachable from this class
+        if (!POE2Data.isNodeReachableFromClass(targetId, className)) {
+            return null;
+        }
         
         // BFS from all allocated nodes simultaneously
         const visited = new Set(this.results.allocatedIds);
@@ -225,7 +238,8 @@ const TreeOptimizer = {
         for (const allocatedId of this.results.allocatedIds) {
             const neighbors = POE2Data.getNeighbors(allocatedId);
             for (const neighbor of neighbors) {
-                if (!visited.has(neighbor)) {
+                // Only consider neighbors reachable from this class
+                if (!visited.has(neighbor) && POE2Data.isNodeReachableFromClass(neighbor, className)) {
                     queue.push({ nodeId: neighbor, path: [neighbor] });
                 }
             }
@@ -243,7 +257,8 @@ const TreeOptimizer = {
             
             const neighbors = POE2Data.getNeighbors(nodeId);
             for (const neighbor of neighbors) {
-                if (!visited.has(neighbor)) {
+                // Only traverse to neighbors reachable from this class
+                if (!visited.has(neighbor) && POE2Data.isNodeReachableFromClass(neighbor, className)) {
                     queue.push({ nodeId: neighbor, path: [...path, neighbor] });
                 }
             }
@@ -259,9 +274,13 @@ const TreeOptimizer = {
         // Get all valuable nodes we haven't allocated
         const candidates = [];
         const valuableNodes = POE2Data.getValuableNodes();
+        const className = this.config.className;
         
         for (const nodeId in valuableNodes) {
             if (this.results.allocatedIds.has(nodeId)) continue;
+            
+            // IMPORTANT: Only consider nodes reachable from this class
+            if (!POE2Data.isNodeReachableFromClass(nodeId, className)) continue;
             
             const node = valuableNodes[nodeId];
             const score = this.scoreNode(node);
