@@ -364,50 +364,63 @@ const App = {
             return;
         }
         
-        const nodeList = TreeOptimizer.exportNodeList();
+        const results = TreeOptimizer.results;
         const pobCode = TreeOptimizer.exportToPoBCode();
-        const pobUrl = TreeOptimizer.exportToPoBUrl();
+        const nodeList = TreeOptimizer.exportNodeList();
         
-        if (!nodeList) {
-            this.showToast('No nodes to export!');
-            return;
+        // Get keystones and notables for summary
+        const keystones = results.allocatedNodes.filter(n => n.type === 'keystone' && !n.isStub);
+        const notables = results.allocatedNodes.filter(n => n.type === 'notable' && !n.isStub);
+        
+        // Copy PoB code to clipboard
+        if (pobCode) {
+            this.copyToClipboard(pobCode);
         }
         
-        // Copy node list to clipboard
-        this.copyToClipboard(nodeList);
-        
-        // Show modal with all export options
+        // Show modal
         const modal = document.createElement('div');
         modal.className = 'export-modal';
         modal.innerHTML = `
-            <div class="export-modal-content">
-                <h3>📋 Export Build</h3>
+            <div class="export-modal-content" style="max-width: 700px;">
+                <h3>📋 Export to Path of Building</h3>
                 
                 <div class="export-section">
-                    <h4>Option 1: Node IDs (Copied to clipboard)</h4>
-                    <textarea readonly class="node-list-display">${nodeList}</textarea>
-                </div>
-                
-                <div class="export-section">
-                    <h4>Option 2: PoB Import Code</h4>
-                    <textarea readonly class="node-list-display" id="pobCodeArea">${pobCode || 'Could not generate'}</textarea>
+                    <h4>🎯 PoB Import Code ${pobCode ? '(Copied to clipboard!)' : ''}</h4>
+                    <p style="color: var(--text-secondary); margin-bottom: 10px;">
+                        Paste this code in PoB: Import/Export Build → "Import from code"
+                    </p>
+                    <textarea readonly class="node-list-display" style="height: 80px;" id="pobCodeArea">${pobCode || 'Could not generate - pako library may not be loaded'}</textarea>
                     <button class="btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('pobCodeArea').value); App.showToast('Copied!');">Copy Code</button>
                 </div>
                 
                 <div class="export-section">
-                    <h4>Option 3: Try PoEPlanner URL</h4>
-                    <input readonly class="node-list-display" style="height:auto;padding:10px;" value="${pobUrl}" id="pobUrlArea">
-                    <button class="btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('pobUrlArea').value); App.showToast('Copied!');">Copy URL</button>
+                    <h4>📝 Node IDs (for manual reference)</h4>
+                    <textarea readonly class="node-list-display" style="height: 60px;" id="nodeIdsArea">${nodeList}</textarea>
+                    <button class="btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('nodeIdsArea').value); App.showToast('Copied!');">Copy IDs</button>
+                </div>
+                
+                <div class="export-section">
+                    <h4>📊 Build Summary</h4>
+                    <div style="color: var(--text-secondary);">
+                        <p><strong>Class:</strong> ${TreeOptimizer.config.className || 'Unknown'}</p>
+                        <p><strong>Points:</strong> ${results.totalPoints}</p>
+                        <p><strong>Keystones (${keystones.length}):</strong> ${keystones.map(n => n.name).join(', ') || 'none'}</p>
+                        <p><strong>Notables:</strong> ${notables.length}</p>
+                    </div>
                 </div>
                 
                 <div class="export-instructions">
-                    <h4>How to import in Path of Building:</h4>
+                    <h4>How to import in PoB:</h4>
                     <ol>
                         <li>Open Path of Building (POE2 version)</li>
-                        <li>Go to Import/Export tab</li>
-                        <li>Try pasting the PoB Import Code</li>
-                        <li>Or paste the PoEPlanner URL</li>
+                        <li>Click <strong>"Import/Export Build"</strong></li>
+                        <li>Paste the code above in the import field</li>
+                        <li>Click <strong>"Import"</strong></li>
                     </ol>
+                    <p style="color: #f0ad4e; margin-top: 10px;">
+                        ⚠️ Note: If import fails, PoB POE2 may use a different format. 
+                        The node IDs are provided as backup reference.
+                    </p>
                 </div>
                 
                 <button class="btn-primary" onclick="this.parentElement.parentElement.remove()">Close</button>
@@ -415,7 +428,7 @@ const App = {
         `;
         document.body.appendChild(modal);
         
-        this.showToast('Node IDs copied to clipboard!');
+        this.showToast(pobCode ? 'PoB code copied!' : 'Export generated');
     },
     
     /**

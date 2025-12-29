@@ -632,3 +632,109 @@ footer p {
     margin-top: 8px;
     margin-right: 8px;
 }
+
+/* Node name chips for export */
+.node-name-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 10px;
+    background: var(--bg-dark);
+    border-radius: 4px;
+}
+
+.node-name-list.small-nodes {
+    max-height: 150px;
+}
+
+.node-chip {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: default;
+}
+
+.node-chip.keystone {
+    background: rgba(218, 165, 32, 0.3);
+    border: 1px solid var(--accent-gold);
+    color: var(--accent-gold);
+    font-weight: 600;
+}
+
+.node-chip.notable {
+    background: rgba(70, 130, 180, 0.3);
+    border: 1px solid #4682b4;
+    color: #87ceeb;
+}
+
+.node-chip.small {
+    background: rgba(100, 100, 100, 0.3);
+    border: 1px solid #666;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.export-modal-content ol {
+    margin-left: 20px;
+}
+
+.export-modal-content ol li {
+    margin: 8px 0;
+    color: var(--text-secondary);
+}
+
+.export-modal-content ol li strong {
+    color: var(--accent-gold);
+}
+
+/* Click sequence list */
+.click-sequence-list {
+    max-height: 400px;
+    overflow-y: auto;
+    background: var(--bg-dark);
+    border-radius: 4px;
+    padding: 10px;
+}
+
+.click-item {
+    display: flex;
+    align-items: center;
+    padding: 6px 10px;
+    margin: 2px 0;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.click-item.keystone {
+    background: rgba(218, 165, 32, 0.2);
+    border-left: 3px solid var(--accent-gold);
+}
+
+.click-item.notable {
+    background: rgba(70, 130, 180, 0.2);
+    border-left: 3px solid #4682b4;
+}
+
+.click-item.small {
+    background: rgba(60, 60, 60, 0.3);
+    border-left: 3px solid #555;
+}
+
+.click-num {
+    min-width: 30px;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.click-icon {
+    margin-right: 8px;
+}
+
+.click-name {
+    flex: 1;
+    color: var(--text-primary);
+}

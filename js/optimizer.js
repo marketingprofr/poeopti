@@ -475,81 +475,87 @@ const TreeOptimizer = {
     },
     
     /**
-     * Export as PoB-compatible URL (PoEPlanner format)
-     * Format: Base64 encoded JSON with class, version, and node hashes
+     * Export as PoB-compatible build code
+     * Format: Deflate-compressed XML, Base64-encoded with URL-safe chars
      */
-    exportToPoBUrl: function() {
+    exportToPoBCode: function() {
         const classMap = {
-            'warrior': 0, 'marauder': 1, 'ranger': 2, 'mercenary': 3,
-            'sorceress': 4, 'witch': 5, 'monk': 6
+            'warrior': 1, 'marauder': 2, 'ranger': 3, 'mercenary': 4,
+            'sorceress': 5, 'witch': 6, 'monk': 7
         };
         
-        const classId = classMap[this.config.className] || 0;
+        const classId = classMap[this.config.className?.toLowerCase()] || 1;
         
         // Get node IDs as integers
         const nodeIds = Array.from(this.results.allocatedIds)
             .filter(id => id !== 'root' && POE2Data.allNodes[id])
             .map(id => parseInt(id))
-            .filter(id => !isNaN(id))
-            .sort((a, b) => a - b);
+            .filter(id => !isNaN(id));
         
-        // Create PoEPlanner-style URL
-        // Format: https://poeplanner.com/poe2/[base64data]
-        const data = {
-            v: 2, // POE2
-            c: classId,
-            a: 0, // Ascendancy (0 = none selected)
-            n: nodeIds
-        };
+        // Create minimal XML structure that PoB expects
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<PathOfBuilding>
+    <Build level="90" targetVersion="2_0" className="${this.config.className || 'Warrior'}" ascendClassName="None" mainSocketGroup="1">
+    </Build>
+    <Tree activeSpec="1">
+        <Spec treeVersion="2_0" classId="${classId}" ascendClassId="0" nodes="${nodeIds.join(',')}">
+        </Spec>
+    </Tree>
+    <Skills>
+    </Skills>
+    <Items>
+    </Items>
+</PathOfBuilding>`;
         
-        const jsonStr = JSON.stringify(data);
-        const base64 = btoa(jsonStr);
-        
-        return `https://poeplanner.com/poe2/b64/${base64}`;
+        try {
+            // Check if pako is available
+            if (typeof pako === 'undefined') {
+                console.error("pako library not loaded");
+                return null;
+            }
+            
+            // Compress with deflate (raw, no zlib header)
+            const compressed = pako.deflateRaw(xml, { level: 9 });
+            
+            // Convert to base64 with URL-safe characters
+            const base64 = btoa(String.fromCharCode.apply(null, compressed))
+                .replace(/\+/g, '-')
+                .replace(/\//g, '_');
+            
+            return base64;
+        } catch (e) {
+            console.error("Export encoding failed:", e);
+            return null;
+        }
     },
     
     /**
-     * Export as PoB import code
-     * This generates code that can be pasted into PoB's import dialog
+     * Get the official PoE2 passive tree URL with hashes
      */
-    exportToPoBCode: function() {
+    exportToTreeUrl: function() {
         const classMap = {
             'warrior': 0, 'marauder': 1, 'ranger': 2, 'mercenary': 3,
             'sorceress': 4, 'witch': 5, 'monk': 6
         };
         
-        const classId = classMap[this.config.className] || 0;
+        const classId = classMap[this.config.className?.toLowerCase()] || 0;
         
         // Get node IDs
         const nodeIds = Array.from(this.results.allocatedIds)
             .filter(id => id !== 'root' && POE2Data.allNodes[id])
             .map(id => parseInt(id))
-            .filter(id => !isNaN(id))
-            .sort((a, b) => a - b);
+            .filter(id => !isNaN(id));
         
-        // PoB uses a specific binary format, but we can try JSON
-        // Format used by PoB for tree sharing
-        const pobData = {
-            version: 6, // PoB internal version
-            class: classId,
-            ascendancy: 0,
-            alternateAscendancy: 0,
-            nodes: nodeIds,
-            masteryEffects: [],
-            overrides: {}
-        };
+        // Create URL format similar to pathofexile.com tree URLs
+        // Format: version-class-ascendancy-nodes
+        const version = 2; // POE2
+        const ascendancy = 0;
         
-        // Compress and encode
-        const jsonStr = JSON.stringify(pobData);
+        // Encode nodes as base64
+        const nodesStr = nodeIds.join(',');
+        const encoded = btoa(nodesStr).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
         
-        // Base64 encode (PoB expects this)
-        try {
-            const encoded = btoa(unescape(encodeURIComponent(jsonStr)));
-            return encoded;
-        } catch (e) {
-            console.error("Export encoding failed:", e);
-            return null;
-        }
+        return `https://www.pathofexile.com/passive-skill-tree/2/${version}-${classId}-${ascendancy}/${encoded}`;
     },
     
     /**
