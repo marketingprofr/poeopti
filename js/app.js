@@ -365,31 +365,51 @@ const App = {
         }
         
         const nodeList = TreeOptimizer.exportNodeList();
+        const pobCode = TreeOptimizer.exportToPoBCode();
+        const pobUrl = TreeOptimizer.exportToPoBUrl();
+        
         if (!nodeList) {
             this.showToast('No nodes to export!');
             return;
         }
         
-        // Copy to clipboard
+        // Copy node list to clipboard
         this.copyToClipboard(nodeList);
         
-        // Show instructions in a more visible way
+        // Show modal with all export options
         const modal = document.createElement('div');
         modal.className = 'export-modal';
         modal.innerHTML = `
             <div class="export-modal-content">
-                <h3>📋 Node IDs Copied!</h3>
-                <p>The node IDs have been copied to your clipboard.</p>
-                <textarea readonly class="node-list-display">${nodeList}</textarea>
+                <h3>📋 Export Build</h3>
+                
+                <div class="export-section">
+                    <h4>Option 1: Node IDs (Copied to clipboard)</h4>
+                    <textarea readonly class="node-list-display">${nodeList}</textarea>
+                </div>
+                
+                <div class="export-section">
+                    <h4>Option 2: PoB Import Code</h4>
+                    <textarea readonly class="node-list-display" id="pobCodeArea">${pobCode || 'Could not generate'}</textarea>
+                    <button class="btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('pobCodeArea').value); App.showToast('Copied!');">Copy Code</button>
+                </div>
+                
+                <div class="export-section">
+                    <h4>Option 3: Try PoEPlanner URL</h4>
+                    <input readonly class="node-list-display" style="height:auto;padding:10px;" value="${pobUrl}" id="pobUrlArea">
+                    <button class="btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('pobUrlArea').value); App.showToast('Copied!');">Copy URL</button>
+                </div>
+                
                 <div class="export-instructions">
                     <h4>How to import in Path of Building:</h4>
                     <ol>
                         <li>Open Path of Building (POE2 version)</li>
-                        <li>Create a new build or open existing</li>
-                        <li>Currently PoB doesn't support direct node import</li>
-                        <li>Use the JSON export below for reference</li>
+                        <li>Go to Import/Export tab</li>
+                        <li>Try pasting the PoB Import Code</li>
+                        <li>Or paste the PoEPlanner URL</li>
                     </ol>
                 </div>
+                
                 <button class="btn-primary" onclick="this.parentElement.parentElement.remove()">Close</button>
             </div>
         `;

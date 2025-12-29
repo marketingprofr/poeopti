@@ -204,18 +204,13 @@ const POE2Data = {
             }
         }
         
-        // 2. Check for root node with out array (and set up connections)
+        // 2. Check for root node with out array
+        // NOTE: We store the class starts but do NOT connect them via root
+        // This prevents cross-class pathing
         if (data.root && data.root.out && Array.isArray(data.root.out)) {
             data.root.out.forEach((nodeId, idx) => {
                 const nodeIdStr = String(nodeId);
                 this.classStartNodes[idx] = nodeIdStr;
-                
-                // IMPORTANT: Make sure root connects to class starts
-                // The root node acts as a virtual center connecting all class starts
-                if (!this.connections['root']) {
-                    this.connections['root'] = [];
-                }
-                this.connections['root'].push(nodeIdStr);
             });
             console.log("Found class starts from root.out:", this.classStartNodes);
             return;
@@ -235,14 +230,12 @@ const POE2Data = {
             const node = nodes[nodeId];
             if (!node || typeof node !== 'object') return;
             
-            // Check for explicit class start flag
             if (node.isClassStart || node.classStartIndex !== undefined) {
                 const idx = node.classStartIndex !== undefined ? node.classStartIndex : Object.keys(this.classStartNodes).length;
                 this.classStartNodes[idx] = String(nodeId);
                 return;
             }
             
-            // Check name for class names
             const className = node.name?.toLowerCase();
             const classMap = {
                 'warrior': 0, 'marauder': 1, 'ranger': 2, 'mercenary': 3,
@@ -253,27 +246,13 @@ const POE2Data = {
             }
         });
         
-        // 5. If still no starts found, use nodes with high connectivity
+        // 5. Fallback
         if (Object.keys(this.classStartNodes).length === 0) {
-            console.log("No class starts found, using fallback - searching for highly connected nodes");
-            
-            // Find nodes with many connections as potential class starts
-            const nodeConnections = {};
-            Object.keys(nodes).forEach(nodeId => {
-                const node = nodes[nodeId];
-                if (node && node.connections) {
-                    nodeConnections[nodeId] = node.connections.length;
-                }
-            });
-            
-            // Get top connected nodes
-            const sorted = Object.entries(nodeConnections)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 7);
-            
-            sorted.forEach((entry, idx) => {
-                this.classStartNodes[idx] = entry[0];
-            });
+            console.log("No class starts found, using fallback");
+            const nodeIds = Object.keys(nodes).filter(id => nodes[id] && typeof nodes[id] === 'object');
+            if (nodeIds.length > 0) {
+                this.classStartNodes[0] = nodeIds[0];
+            }
         }
         
         console.log("Found class starts:", this.classStartNodes);
@@ -406,8 +385,14 @@ const POE2Data = {
         let connectionCount = 0;
         const missingNodes = new Set();
         
+        // Get all class start node IDs to potentially filter cross-class connections
+        const classStartSet = new Set(Object.values(this.classStartNodes));
+        
         // First pass: collect all connections
         Object.keys(nodes).forEach(nodeId => {
+            // SKIP the root node - it connects all class starts together
+            if (nodeId === 'root') return;
+            
             const rawNode = nodes[nodeId];
             if (!rawNode || typeof rawNode !== 'object') return;
             
@@ -418,6 +403,9 @@ const POE2Data = {
             }
             
             connectionIds.forEach(targetId => {
+                // Skip connections to 'root' node
+                if (targetId === 'root') return;
+                
                 if (!this.connections[nodeId].includes(targetId)) {
                     this.connections[nodeId].push(targetId);
                     connectionCount++;
@@ -435,6 +423,8 @@ const POE2Data = {
         nodeIds.forEach(nodeId => {
             const neighbors = [...this.connections[nodeId]];
             neighbors.forEach(targetId => {
+                if (targetId === 'root') return; // Skip root
+                
                 if (!this.connections[targetId]) {
                     this.connections[targetId] = [];
                 }
@@ -446,6 +436,7 @@ const POE2Data = {
         
         // Create stub nodes for missing node IDs (needed for pathfinding)
         missingNodes.forEach(nodeId => {
+            if (nodeId === 'root') return; // Don't create stub for root
             if (!this.allNodes[nodeId]) {
                 this.allNodes[nodeId] = {
                     id: String(nodeId),
@@ -461,7 +452,7 @@ const POE2Data = {
             }
         });
         
-        // Also ensure all class start nodes exist
+        // Ensure all class start nodes exist in allNodes
         Object.values(this.classStartNodes).forEach(nodeId => {
             if (!this.allNodes[nodeId]) {
                 this.allNodes[nodeId] = {
@@ -475,21 +466,14 @@ const POE2Data = {
                     isTravel: true,
                     isClassStart: true
                 };
-                // Make sure it's in connections too
-                if (!this.connections[nodeId]) {
-                    this.connections[nodeId] = [];
-                }
+            }
+            if (!this.connections[nodeId]) {
+                this.connections[nodeId] = [];
             }
         });
         
         console.log(`Built ${connectionCount} connections across ${Object.keys(this.connections).length} nodes`);
         console.log(`Created ${missingNodes.size} stub nodes for pathfinding`);
-        
-        // Log a sample connection
-        const sampleNodeId = Object.keys(this.connections)[0];
-        if (sampleNodeId) {
-            console.log(`Sample: Node ${sampleNodeId} connects to:`, this.connections[sampleNodeId]);
-        }
     },
     
     /**

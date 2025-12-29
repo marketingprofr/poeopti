@@ -610,3 +610,25 @@ footer p {
 .export-instructions li {
     margin: 5px 0;
 }
+
+/* Export sections */
+.export-section {
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.export-section:last-of-type {
+    border-bottom: none;
+}
+
+.export-section h4 {
+    color: var(--accent-gold);
+    margin-bottom: 10px;
+    font-size: 14px;
+}
+
+.export-section .btn-secondary {
+    margin-top: 8px;
+    margin-right: 8px;
+}

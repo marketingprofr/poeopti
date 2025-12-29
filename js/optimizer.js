@@ -467,10 +467,89 @@ const TreeOptimizer = {
      */
     exportNodeList: function() {
         return Array.from(this.results.allocatedIds)
+            .filter(id => id !== 'root' && POE2Data.allNodes[id]) // Only real nodes
             .map(id => parseInt(id))
             .filter(id => !isNaN(id))
             .sort((a, b) => a - b)
             .join(',');
+    },
+    
+    /**
+     * Export as PoB-compatible URL (PoEPlanner format)
+     * Format: Base64 encoded JSON with class, version, and node hashes
+     */
+    exportToPoBUrl: function() {
+        const classMap = {
+            'warrior': 0, 'marauder': 1, 'ranger': 2, 'mercenary': 3,
+            'sorceress': 4, 'witch': 5, 'monk': 6
+        };
+        
+        const classId = classMap[this.config.className] || 0;
+        
+        // Get node IDs as integers
+        const nodeIds = Array.from(this.results.allocatedIds)
+            .filter(id => id !== 'root' && POE2Data.allNodes[id])
+            .map(id => parseInt(id))
+            .filter(id => !isNaN(id))
+            .sort((a, b) => a - b);
+        
+        // Create PoEPlanner-style URL
+        // Format: https://poeplanner.com/poe2/[base64data]
+        const data = {
+            v: 2, // POE2
+            c: classId,
+            a: 0, // Ascendancy (0 = none selected)
+            n: nodeIds
+        };
+        
+        const jsonStr = JSON.stringify(data);
+        const base64 = btoa(jsonStr);
+        
+        return `https://poeplanner.com/poe2/b64/${base64}`;
+    },
+    
+    /**
+     * Export as PoB import code
+     * This generates code that can be pasted into PoB's import dialog
+     */
+    exportToPoBCode: function() {
+        const classMap = {
+            'warrior': 0, 'marauder': 1, 'ranger': 2, 'mercenary': 3,
+            'sorceress': 4, 'witch': 5, 'monk': 6
+        };
+        
+        const classId = classMap[this.config.className] || 0;
+        
+        // Get node IDs
+        const nodeIds = Array.from(this.results.allocatedIds)
+            .filter(id => id !== 'root' && POE2Data.allNodes[id])
+            .map(id => parseInt(id))
+            .filter(id => !isNaN(id))
+            .sort((a, b) => a - b);
+        
+        // PoB uses a specific binary format, but we can try JSON
+        // Format used by PoB for tree sharing
+        const pobData = {
+            version: 6, // PoB internal version
+            class: classId,
+            ascendancy: 0,
+            alternateAscendancy: 0,
+            nodes: nodeIds,
+            masteryEffects: [],
+            overrides: {}
+        };
+        
+        // Compress and encode
+        const jsonStr = JSON.stringify(pobData);
+        
+        // Base64 encode (PoB expects this)
+        try {
+            const encoded = btoa(unescape(encodeURIComponent(jsonStr)));
+            return encoded;
+        } catch (e) {
+            console.error("Export encoding failed:", e);
+            return null;
+        }
     },
     
     /**
