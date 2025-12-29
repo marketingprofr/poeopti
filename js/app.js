@@ -356,12 +356,46 @@ const App = {
     },
     
     /**
-     * Export to PoB format
+     * Export to PoB format - show node IDs for manual entry
      */
     exportPoB: function() {
-        const pobCode = TreeOptimizer.exportToPoB();
-        this.copyToClipboard(pobCode);
-        this.showToast('PoB code copied to clipboard!');
+        if (TreeOptimizer.results.totalPoints === 0) {
+            this.showToast('Run optimization first!');
+            return;
+        }
+        
+        const nodeList = TreeOptimizer.exportNodeList();
+        if (!nodeList) {
+            this.showToast('No nodes to export!');
+            return;
+        }
+        
+        // Copy to clipboard
+        this.copyToClipboard(nodeList);
+        
+        // Show instructions in a more visible way
+        const modal = document.createElement('div');
+        modal.className = 'export-modal';
+        modal.innerHTML = `
+            <div class="export-modal-content">
+                <h3>📋 Node IDs Copied!</h3>
+                <p>The node IDs have been copied to your clipboard.</p>
+                <textarea readonly class="node-list-display">${nodeList}</textarea>
+                <div class="export-instructions">
+                    <h4>How to import in Path of Building:</h4>
+                    <ol>
+                        <li>Open Path of Building (POE2 version)</li>
+                        <li>Create a new build or open existing</li>
+                        <li>Currently PoB doesn't support direct node import</li>
+                        <li>Use the JSON export below for reference</li>
+                    </ol>
+                </div>
+                <button class="btn-primary" onclick="this.parentElement.parentElement.remove()">Close</button>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        
+        this.showToast('Node IDs copied to clipboard!');
     },
     
     /**
@@ -385,6 +419,10 @@ const App = {
      * Export share URL
      */
     exportUrl: function() {
+        if (TreeOptimizer.results.totalPoints === 0) {
+            this.showToast('Run optimization first!');
+            return;
+        }
         const url = TreeOptimizer.generateShareUrl();
         this.copyToClipboard(url);
         this.showToast('Share URL copied to clipboard!');

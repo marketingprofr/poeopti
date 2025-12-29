@@ -1,83 +1,53 @@
 /**
- * POE2 Passive Tree Data Module
+ * POE2 Passive Tree Data Module - FIXED VERSION
  * 
- * This module handles loading and parsing tree data from POB tree.json
- * No sample/mock data - only real data from loaded files
+ * Key fixes:
+ * 1. Stores ALL nodes for complete connection graph
+ * 2. Properly finds class start nodes from tree.json
+ * 3. Separates "valuable" nodes from "travel" nodes
  */
 
 const POE2Data = {
     version: "0.3",
     isLoaded: false,
     
-    // Character classes and their starting positions
-    classes: {
-        warrior: { id: 0, name: "Warrior", startNode: null, attribute: "str" },
-        marauder: { id: 1, name: "Marauder", startNode: null, attribute: "str" },
-        ranger: { id: 2, name: "Ranger", startNode: null, attribute: "dex" },
-        mercenary: { id: 3, name: "Mercenary", startNode: null, attribute: "dex" },
-        sorceress: { id: 4, name: "Sorceress", startNode: null, attribute: "int" },
-        witch: { id: 5, name: "Witch", startNode: null, attribute: "int" },
-        monk: { id: 6, name: "Monk", startNode: null, attribute: "dex_int" },
-    },
+    // All nodes (for pathfinding)
+    allNodes: {},
     
-    // Ascendancy mappings
-    ascendancies: {
-        // Warrior Ascendancies
-        titan: { class: "warrior", name: "Titan" },
-        warbringer: { class: "warrior", name: "Warbringer" },
-        
-        // Marauder Ascendancies
-        bloodmage: { class: "marauder", name: "Blood Mage" },
-        infernalist: { class: "marauder", name: "Infernalist" },
-        
-        // Ranger Ascendancies
-        deadeye: { class: "ranger", name: "Deadeye" },
-        pathfinder: { class: "ranger", name: "Pathfinder" },
-        
-        // Mercenary Ascendancies
-        witchhunter: { class: "mercenary", name: "Witchhunter" },
-        gemlinglegionnaire: { class: "mercenary", name: "Gemling Legionnaire" },
-        
-        // Sorceress Ascendancies
-        chronomancer: { class: "sorceress", name: "Chronomancer" },
-        stormweaver: { class: "sorceress", name: "Stormweaver" },
-        
-        // Witch Ascendancies
-        acolyte: { class: "witch", name: "Acolyte of Chayula" },
-        invoker: { class: "witch", name: "Invoker" },
-        
-        // Monk Ascendancies
-        chayuladisciple: { class: "monk", name: "Disciple of Chayula" },
-        invokermonk: { class: "monk", name: "Invoker of Storms" },
-    },
-    
-    // Actual tree data - populated from loaded JSON
+    // Categorized nodes (for optimization scoring)
     keystones: {},
     notables: {},
     smallNodes: {},
-    connections: {},
-    groups: {},
+    travelNodes: {}, // Nodes with no stats - just for pathing
     
-    // Raw nodes for reference
-    rawNodes: {},
+    // Connection graph
+    connections: {},
+    
+    // Class starting node IDs (from root.out in tree.json)
+    classStartNodes: {},
+    
+    // Groups for positioning
+    groups: {},
     
     /**
      * Clear all loaded data
      */
     clear: function() {
+        this.allNodes = {};
         this.keystones = {};
         this.notables = {};
         this.smallNodes = {};
+        this.travelNodes = {};
         this.connections = {};
+        this.classStartNodes = {};
         this.groups = {};
-        this.rawNodes = {};
         this.isLoaded = false;
     },
     
     /**
-     * Get all nodes
+     * Get all valuable nodes (excluding travel nodes)
      */
-    getAllNodes: function() {
+    getValuableNodes: function() {
         return { ...this.keystones, ...this.notables, ...this.smallNodes };
     },
     
@@ -85,21 +55,64 @@ const POE2Data = {
      * Get keystones list for dropdown
      */
     getKeystonesList: function() {
-        return Object.values(this.keystones).map(ks => ({
-            id: ks.id,
-            name: ks.name,
-            stats: ks.stats,
-            offense: ks.offense,
-            defense: ks.defense
-        }));
+        return Object.values(this.keystones)
+            .map(ks => ({
+                id: ks.id,
+                name: ks.name,
+                stats: ks.stats || [],
+                offense: ks.offense || 0,
+                defense: ks.defense || 0
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name));
     },
     
     /**
-     * Get class for ascendancy
+     * Get starting node for a class
+     */
+    getClassStartNode: function(className) {
+        // Map class names to their start node
+        const classMap = {
+            'warrior': 0,
+            'marauder': 1, 
+            'ranger': 2,
+            'mercenary': 3,
+            'sorceress': 4,
+            'witch': 5,
+            'monk': 6
+        };
+        
+        const classIndex = classMap[className?.toLowerCase()];
+        if (classIndex !== undefined && this.classStartNodes[classIndex]) {
+            return this.classStartNodes[classIndex];
+        }
+        
+        // Fallback: return first start node we have
+        const startNodes = Object.values(this.classStartNodes);
+        return startNodes.length > 0 ? startNodes[0] : null;
+    },
+    
+    /**
+     * Get class name for an ascendancy
      */
     getClassForAscendancy: function(ascendancy) {
-        const asc = this.ascendancies[ascendancy];
-        return asc ? this.classes[asc.class] : null;
+        const ascendancyMap = {
+            'titan': 'warrior',
+            'warbringer': 'warrior',
+            'bloodmage': 'marauder',
+            'infernalist': 'marauder',
+            'deadeye': 'ranger',
+            'pathfinder': 'ranger',
+            'witchhunter': 'mercenary',
+            'gemlinglegionnaire': 'mercenary',
+            'chronomancer': 'sorceress',
+            'stormweaver': 'sorceress',
+            'acolyte': 'witch',
+            'invoker': 'witch',
+            'chayuladisciple': 'monk',
+            'invokermonk': 'monk'
+        };
+        
+        return ascendancyMap[ascendancy?.toLowerCase()] || null;
     },
     
     /**
@@ -108,36 +121,42 @@ const POE2Data = {
     loadFromJSON: function(jsonData) {
         try {
             console.log("Loading tree data...");
-            
-            // Clear existing data
             this.clear();
             
-            // Store version if present
+            // Store version
             if (jsonData.tree) {
                 this.version = jsonData.tree;
             }
             
-            // Parse groups for positioning first
+            // Store groups for positioning
             if (jsonData.groups) {
                 this.groups = jsonData.groups;
             }
             
-            // Parse nodes
+            // CRITICAL: Find class start nodes from root
+            if (jsonData.nodes && jsonData.nodes.root) {
+                const rootOut = jsonData.nodes.root.out || [];
+                rootOut.forEach((nodeId, index) => {
+                    this.classStartNodes[index] = String(nodeId);
+                });
+                console.log("Class start nodes:", this.classStartNodes);
+            }
+            
+            // Parse ALL nodes
             if (jsonData.nodes) {
-                this.parseNodes(jsonData.nodes);
+                this.parseAllNodes(jsonData.nodes);
             }
             
-            // Parse class start positions
-            if (jsonData.classes) {
-                this.parseClasses(jsonData.classes);
-            }
-            
-            // Build connections graph
-            this.buildConnectionGraph();
+            // Build complete connection graph
+            this.buildConnectionGraph(jsonData.nodes);
             
             this.isLoaded = true;
             
-            console.log(`Loaded: ${Object.keys(this.keystones).length} keystones, ${Object.keys(this.notables).length} notables, ${Object.keys(this.smallNodes).length} small nodes`);
+            console.log(`Loaded: ${Object.keys(this.keystones).length} keystones, ` +
+                        `${Object.keys(this.notables).length} notables, ` +
+                        `${Object.keys(this.smallNodes).length} small nodes, ` +
+                        `${Object.keys(this.travelNodes).length} travel nodes`);
+            console.log(`Total connections: ${Object.keys(this.connections).length}`);
             
             return true;
         } catch (e) {
@@ -147,61 +166,43 @@ const POE2Data = {
     },
     
     /**
-     * Parse nodes from POB format
+     * Parse all nodes from tree.json
      */
-    parseNodes: function(nodes) {
+    parseAllNodes: function(nodes) {
         Object.keys(nodes).forEach(nodeId => {
-            const pobNode = nodes[nodeId];
+            if (nodeId === 'root') return; // Skip the special root node
             
-            // Skip mastery nodes, jewel sockets, and root/class start nodes
-            if (pobNode.isMastery || pobNode.isJewelSocket || pobNode.isAscendancyStart) {
+            const rawNode = nodes[nodeId];
+            
+            // Skip mastery nodes and jewel sockets
+            if (rawNode.isMastery || rawNode.isJewelSocket) {
                 return;
             }
             
-            // Skip proxy/hidden nodes
-            if (pobNode.isProxy || pobNode.ascendancyName) {
+            // Skip ascendancy nodes for now (they're separate)
+            if (rawNode.ascendancyName) {
                 return;
             }
             
-            // Determine node type based on POB flags
-            let type = "small";
-            if (pobNode.ks === true || pobNode.isKeystone === true) {
-                type = "keystone";
-            } else if (pobNode.not === true || pobNode.isNotable === true) {
-                type = "notable";
+            // Determine node type
+            let type = 'small';
+            if (rawNode.ks === true) {
+                type = 'keystone';
+            } else if (rawNode.not === true) {
+                type = 'notable';
             }
             
-            // Get node name - POB uses 'dn' for display name
-            const name = pobNode.dn || pobNode.name || `Node ${nodeId}`;
+            // Get stats
+            const stats = rawNode.sd || [];
+            const name = rawNode.dn || `Node ${nodeId}`;
             
-            // Parse stats/descriptions - POB uses 'sd' array
-            const stats = pobNode.sd || pobNode.stats || [];
+            // Calculate scores
+            const scores = this.calculateNodeScores(stats, rawNode);
             
-            // Skip nodes without meaningful stats (pure travel nodes)
-            // But keep attribute nodes (they have sa, da, ia values)
-            const hasAttributes = (pobNode.sa > 0 || pobNode.da > 0 || pobNode.ia > 0);
-            if (stats.length === 0 && !hasAttributes && type === "small") {
-                return;
-            }
+            // Extract tags
+            const tags = this.extractTags(stats, rawNode);
             
-            // Calculate offense/defense scores based on stats
-            const scores = this.calculateNodeScores(stats, pobNode);
-            
-            // Extract tags from stats
-            const tags = this.extractTagsFromStats(stats);
-            
-            // Add attribute tags
-            if (pobNode.sa > 0) tags.push('strength');
-            if (pobNode.da > 0) tags.push('dexterity');
-            if (pobNode.ia > 0) tags.push('intelligence');
-            
-            // Get position
-            let position = { x: 0, y: 0 };
-            if (pobNode.g !== undefined && this.groups[pobNode.g]) {
-                const group = this.groups[pobNode.g];
-                position = { x: group.x || 0, y: group.y || 0 };
-            }
-            
+            // Create node object
             const node = {
                 id: String(nodeId),
                 name: name,
@@ -210,116 +211,102 @@ const POE2Data = {
                 tags: tags,
                 offense: scores.offense,
                 defense: scores.defense,
-                position: position,
-                // Store attribute bonuses
-                str: pobNode.sa || 0,
-                dex: pobNode.da || 0,
-                int: pobNode.ia || 0,
-                // Store connections
-                out: (pobNode.out || []).map(String),
-                in: (pobNode.in || []).map(String)
+                // Store connection info
+                out: (rawNode.out || []).map(String),
+                in: (rawNode.in || []).map(String),
+                // Position info
+                group: rawNode.g,
+                // Attribute bonuses
+                str: rawNode.sa || 0,
+                dex: rawNode.da || 0,
+                int: rawNode.ia || 0
             };
             
-            // Store raw node for reference
-            this.rawNodes[nodeId] = pobNode;
+            // Store in allNodes for pathfinding
+            this.allNodes[nodeId] = node;
             
-            // Store in appropriate collection
+            // Categorize based on type and stats
             if (type === 'keystone') {
                 this.keystones[nodeId] = node;
             } else if (type === 'notable') {
                 this.notables[nodeId] = node;
-            } else {
+            } else if (stats.length > 0 || node.str > 0 || node.dex > 0 || node.int > 0) {
                 this.smallNodes[nodeId] = node;
+            } else {
+                // Travel node (no stats, just for pathing)
+                this.travelNodes[nodeId] = node;
             }
+        });
+    },
+    
+    /**
+     * Build complete connection graph from raw nodes
+     */
+    buildConnectionGraph: function(nodes) {
+        // First pass: collect all connections from raw data
+        Object.keys(nodes).forEach(nodeId => {
+            if (nodeId === 'root') return;
+            
+            const rawNode = nodes[nodeId];
+            const outConnections = (rawNode.out || []).map(String);
+            const inConnections = (rawNode.in || []).map(String);
+            
+            // Store bidirectional connections
+            this.connections[nodeId] = [...new Set([...outConnections, ...inConnections])];
+        });
+        
+        // Second pass: ensure bidirectional consistency
+        Object.keys(this.connections).forEach(nodeId => {
+            this.connections[nodeId].forEach(neighborId => {
+                if (!this.connections[neighborId]) {
+                    this.connections[neighborId] = [];
+                }
+                if (!this.connections[neighborId].includes(nodeId)) {
+                    this.connections[neighborId].push(nodeId);
+                }
+            });
         });
     },
     
     /**
      * Calculate offense/defense scores from stats
      */
-    calculateNodeScores: function(stats, pobNode) {
+    calculateNodeScores: function(stats, rawNode) {
         let offense = 0;
         let defense = 0;
         
         stats.forEach(stat => {
-            const lowerStat = stat.toLowerCase();
-            
-            // Parse numeric values from stat strings
+            const lower = stat.toLowerCase();
             const numMatch = stat.match(/(\d+(?:\.\d+)?)/);
             const value = numMatch ? parseFloat(numMatch[1]) : 10;
-            const multiplier = value / 10;
+            const mult = value / 10;
             
-            // Offense patterns
-            if (/damage/i.test(lowerStat) && !/taken/i.test(lowerStat)) {
-                offense += multiplier;
-            }
-            if (/attack speed|cast speed/i.test(lowerStat)) {
-                offense += multiplier * 1.5;
-            }
-            if (/critical strike/i.test(lowerStat)) {
-                offense += multiplier * 1.2;
-            }
-            if (/penetrate/i.test(lowerStat)) {
-                offense += multiplier * 1.5;
-            }
-            if (/accuracy/i.test(lowerStat)) {
-                offense += multiplier * 0.5;
-            }
-            if (/minion.*damage|damage.*minion/i.test(lowerStat)) {
-                offense += multiplier;
-            }
+            // Offense
+            if (/damage/i.test(lower) && !/taken/i.test(lower)) offense += mult;
+            if (/attack speed|cast speed/i.test(lower)) offense += mult * 1.5;
+            if (/critical strike/i.test(lower)) offense += mult * 1.2;
+            if (/penetrate/i.test(lower)) offense += mult * 1.5;
+            if (/accuracy/i.test(lower)) offense += mult * 0.5;
             
-            // Defense patterns
-            if (/maximum life/i.test(lowerStat)) {
-                defense += multiplier * 1.5;
-            }
-            if (/\+\d+.*life(?!.*regen)/i.test(lowerStat)) {
-                defense += multiplier * 0.3;
-            }
-            if (/armour|armor/i.test(lowerStat)) {
-                defense += multiplier * 0.8;
-            }
-            if (/evasion/i.test(lowerStat)) {
-                defense += multiplier * 0.8;
-            }
-            if (/energy shield/i.test(lowerStat)) {
-                defense += multiplier;
-            }
-            if (/resistance/i.test(lowerStat)) {
-                defense += multiplier * 0.8;
-            }
-            if (/block/i.test(lowerStat)) {
-                defense += multiplier * 1.2;
-            }
-            if (/dodge/i.test(lowerStat)) {
-                defense += multiplier * 1.2;
-            }
-            if (/life regenerat/i.test(lowerStat)) {
-                defense += multiplier * 0.6;
-            }
-            if (/damage taken/i.test(lowerStat) && /reduced|less/i.test(lowerStat)) {
-                defense += multiplier * 1.5;
-            }
-            if (/leech/i.test(lowerStat)) {
-                defense += multiplier * 0.5;
-            }
-            if (/cannot be stunned|stun immune/i.test(lowerStat)) {
-                defense += 2;
-            }
-            if (/fortify/i.test(lowerStat)) {
-                defense += multiplier * 0.8;
-            }
+            // Defense
+            if (/maximum life/i.test(lower)) defense += mult * 1.5;
+            if (/\+\d+.*life(?!.*regen)/i.test(lower)) defense += mult * 0.3;
+            if (/armou?r/i.test(lower)) defense += mult * 0.8;
+            if (/evasion/i.test(lower)) defense += mult * 0.8;
+            if (/energy shield/i.test(lower)) defense += mult;
+            if (/resistance/i.test(lower)) defense += mult * 0.8;
+            if (/block/i.test(lower)) defense += mult * 1.2;
+            if (/life regenerat/i.test(lower)) defense += mult * 0.6;
+            if (/damage taken/i.test(lower) && /reduced|less/i.test(lower)) defense += mult * 1.5;
         });
         
         // Attribute bonuses
-        if (pobNode) {
-            const str = pobNode.sa || 0;
-            const dex = pobNode.da || 0;
-            const int = pobNode.ia || 0;
-            
-            // Small attribute bonuses
+        if (rawNode) {
+            const str = rawNode.sa || 0;
+            const dex = rawNode.da || 0;
+            const int = rawNode.ia || 0;
             offense += (str + dex + int) * 0.01;
-            defense += str * 0.02; // Strength gives life
+            defense += str * 0.02;
         }
         
         return {
@@ -331,99 +318,66 @@ const POE2Data = {
     /**
      * Extract tags from stats
      */
-    extractTagsFromStats: function(stats) {
+    extractTags: function(stats, rawNode) {
         const tags = new Set();
-        const statText = stats.join(' ').toLowerCase();
+        const text = stats.join(' ').toLowerCase();
         
-        const tagKeywords = {
-            'physical': ['physical'],
-            'fire': ['fire'],
-            'cold': ['cold', 'freeze', 'chill'],
-            'lightning': ['lightning', 'shock'],
-            'chaos': ['chaos', 'poison'],
-            'elemental': ['elemental'],
-            'attack': ['attack', 'with attacks', 'melee attack'],
-            'spell': ['spell', 'with spells', 'cast'],
-            'melee': ['melee'],
-            'bow': ['bow', 'with bows'],
-            'crossbow': ['crossbow'],
-            'projectile': ['projectile'],
-            'minion': ['minion', 'zombie', 'skeleton', 'spectre'],
-            'critical': ['critical'],
-            'dot': ['damage over time'],
-            'bleed': ['bleed', 'bleeding'],
-            'poison': ['poison'],
-            'ignite': ['ignite', 'burning damage'],
-            'life': ['life'],
-            'mana': ['mana'],
-            'energyshield': ['energy shield'],
-            'armour': ['armour', 'armor'],
-            'evasion': ['evasion'],
-            'resistance': ['resistance'],
-            'block': ['block'],
-            'dodge': ['dodge'],
-            'aoe': ['area of effect', 'area damage', 'radius'],
-            'duration': ['duration'],
-            'totem': ['totem'],
-            'trap': ['trap'],
-            'mine': ['mine'],
-            'warcry': ['warcry'],
-            'slam': ['slam'],
-            'strike': ['strike'],
-            'staff': ['staff', 'staves'],
-            'wand': ['wand'],
-            'sword': ['sword'],
-            'axe': ['axe'],
-            'mace': ['mace', 'sceptre'],
-            'claw': ['claw'],
-            'dagger': ['dagger'],
-            'shield': ['shield', 'while holding a shield'],
-            'dualwield': ['dual wield', 'while dual wielding'],
-            'twohanded': ['two handed', 'two-handed'],
-        };
+        // Damage types
+        if (/physical/i.test(text)) tags.add('physical');
+        if (/fire/i.test(text)) tags.add('fire');
+        if (/cold|freeze|chill/i.test(text)) tags.add('cold');
+        if (/lightning|shock/i.test(text)) tags.add('lightning');
+        if (/chaos|poison/i.test(text)) tags.add('chaos');
+        if (/elemental/i.test(text)) tags.add('elemental');
         
-        Object.keys(tagKeywords).forEach(tag => {
-            if (tagKeywords[tag].some(keyword => statText.includes(keyword))) {
-                tags.add(tag);
-            }
-        });
+        // Attack/spell
+        if (/attack|melee attack|with attacks/i.test(text)) tags.add('attack');
+        if (/spell|with spells|cast/i.test(text)) tags.add('spell');
+        if (/melee/i.test(text)) tags.add('melee');
+        
+        // Weapons
+        if (/\bbow\b/i.test(text)) tags.add('bow');
+        if (/crossbow/i.test(text)) tags.add('crossbow');
+        if (/projectile/i.test(text)) tags.add('projectile');
+        if (/sword/i.test(text)) tags.add('sword');
+        if (/axe/i.test(text)) tags.add('axe');
+        if (/mace|sceptre/i.test(text)) tags.add('mace');
+        if (/staff|staves/i.test(text)) tags.add('staff');
+        if (/wand/i.test(text)) tags.add('wand');
+        if (/claw/i.test(text)) tags.add('claw');
+        if (/dagger/i.test(text)) tags.add('dagger');
+        
+        // Other
+        if (/minion/i.test(text)) tags.add('minion');
+        if (/totem/i.test(text)) tags.add('totem');
+        if (/trap/i.test(text)) tags.add('trap');
+        if (/critical/i.test(text)) tags.add('critical');
+        if (/damage over time|burning|bleed|poison/i.test(text)) tags.add('dot');
+        if (/area|radius/i.test(text)) tags.add('aoe');
+        if (/life/i.test(text)) tags.add('life');
+        if (/energy shield/i.test(text)) tags.add('energyshield');
+        if (/armou?r/i.test(text)) tags.add('armour');
+        if (/evasion/i.test(text)) tags.add('evasion');
+        
+        // Attribute tags
+        if (rawNode) {
+            if (rawNode.sa > 0) tags.add('strength');
+            if (rawNode.da > 0) tags.add('dexterity');
+            if (rawNode.ia > 0) tags.add('intelligence');
+        }
         
         return Array.from(tags);
     },
     
     /**
-     * Parse class starting positions
-     */
-    parseClasses: function(classData) {
-        if (Array.isArray(classData)) {
-            classData.forEach((cls) => {
-                const className = cls.name?.toLowerCase();
-                if (className && this.classes[className]) {
-                    this.classes[className].startNode = cls.startNode;
-                }
-            });
-        }
-    },
-    
-    /**
-     * Build connection graph from node data
-     */
-    buildConnectionGraph: function() {
-        const allNodes = this.getAllNodes();
-        
-        Object.keys(allNodes).forEach(nodeId => {
-            const node = allNodes[nodeId];
-            // Combine 'out' and 'in' connections (bidirectional)
-            const connections = new Set([...(node.out || []), ...(node.in || [])]);
-            this.connections[nodeId] = Array.from(connections);
-        });
-    },
-    
-    /**
-     * Find path between two nodes using BFS
+     * Find shortest path between two nodes using BFS
      */
     findPath: function(startId, endId) {
+        startId = String(startId);
+        endId = String(endId);
+        
         if (startId === endId) return [startId];
+        if (!this.connections[startId]) return null;
         
         const visited = new Set();
         const queue = [[startId]];
@@ -432,15 +386,14 @@ const POE2Data = {
             const path = queue.shift();
             const current = path[path.length - 1];
             
-            if (current === endId) {
-                return path;
-            }
-            
             if (visited.has(current)) continue;
             visited.add(current);
             
             const neighbors = this.connections[current] || [];
             for (const neighbor of neighbors) {
+                if (neighbor === endId) {
+                    return [...path, neighbor];
+                }
                 if (!visited.has(neighbor)) {
                     queue.push([...path, neighbor]);
                 }
@@ -451,24 +404,11 @@ const POE2Data = {
     },
     
     /**
-     * Get nodes connected to the allocated tree
+     * Get neighbors of a node
      */
-    getConnectedNodes: function(allocatedIds) {
-        const connected = new Set();
-        const allocatedSet = new Set(allocatedIds);
-        
-        allocatedIds.forEach(nodeId => {
-            const neighbors = this.connections[nodeId] || [];
-            neighbors.forEach(neighbor => {
-                if (!allocatedSet.has(neighbor)) {
-                    connected.add(neighbor);
-                }
-            });
-        });
-        
-        return Array.from(connected);
+    getNeighbors: function(nodeId) {
+        return this.connections[String(nodeId)] || [];
     }
 };
 
-// Log ready status
-console.log("POE2Data module loaded. Load tree.json to begin.");
+console.log("POE2Data module loaded. Use loadFromJSON() to load tree.json data.");

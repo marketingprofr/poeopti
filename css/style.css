@@ -545,3 +545,68 @@ footer p {
 ::-webkit-scrollbar-thumb:hover {
     background: var(--text-muted);
 }
+
+/* Export Modal */
+.export-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1001;
+}
+
+.export-modal-content {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 30px;
+    max-width: 600px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.export-modal-content h3 {
+    color: var(--accent-gold);
+    margin-bottom: 15px;
+}
+
+.export-modal-content h4 {
+    color: var(--text-primary);
+    margin: 15px 0 10px;
+}
+
+.node-list-display {
+    width: 100%;
+    height: 100px;
+    background: var(--bg-dark);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-primary);
+    padding: 10px;
+    font-family: monospace;
+    font-size: 12px;
+    resize: none;
+    margin: 10px 0;
+}
+
+.export-instructions {
+    background: var(--bg-dark);
+    padding: 15px;
+    border-radius: 4px;
+    margin: 15px 0;
+}
+
+.export-instructions ol {
+    margin: 10px 0 0 20px;
+    color: var(--text-secondary);
+}
+
+.export-instructions li {
+    margin: 5px 0;
+}

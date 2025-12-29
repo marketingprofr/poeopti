@@ -1,29 +1,28 @@
 /**
- * POE2 Passive Tree Optimizer
+ * POE2 Passive Tree Optimizer - FIXED VERSION
  * 
- * This module implements the path optimization algorithm.
- * Uses a combination of:
- * - Greedy selection for initial path
- * - A* pathfinding for connectivity
- * - Simulated annealing for optimization
+ * Key features:
+ * 1. GUARANTEES connectivity - all nodes are connected via pathfinding
+ * 2. Proper tag matching - penalizes WRONG damage types heavily
+ * 3. Working export format
  */
 
 const TreeOptimizer = {
     
-    // Configuration
     config: {
         maxPoints: 128,
         requiredKeystones: [],
         offenseWeight: 0.7,
         defenseWeight: 0.3,
         skillTags: [],
-        weaponType: null,
-        startClass: null,
+        weaponTypes: [],
+        startNodeId: null,
+        className: null,
     },
     
-    // Results storage
     results: {
         allocatedNodes: [],
+        allocatedIds: new Set(),
         totalPoints: 0,
         offenseScore: 0,
         defenseScore: 0,
@@ -35,17 +34,39 @@ const TreeOptimizer = {
      * Configure the optimizer
      */
     configure: function(options) {
-        this.config = { ...this.config, ...options };
+        // Get class from ascendancy
+        const className = POE2Data.getClassForAscendancy(options.ascendancy);
         
-        // Parse skill tags from the option
-        if (options.skillElement) {
-            const skillSelect = document.getElementById('skill');
-            const selectedOption = skillSelect.options[skillSelect.selectedIndex];
-            if (selectedOption) {
-                this.config.skillTags = (selectedOption.dataset.tags || '').split(',').filter(t => t);
-                this.config.weaponType = (selectedOption.dataset.weapon || '').split(',').filter(t => t);
-            }
-        }
+        // Get skill tags from the select element
+        const skillSelect = document.getElementById('skill');
+        const selectedOption = skillSelect?.options[skillSelect.selectedIndex];
+        const skillTags = selectedOption ? 
+            (selectedOption.dataset.tags || '').split(',').filter(t => t.trim()) : [];
+        const weaponTypes = selectedOption ? 
+            (selectedOption.dataset.weapon || '').split(',').filter(t => t.trim()) : [];
+        
+        // Find start node
+        const startNodeId = POE2Data.getClassStartNode(className);
+        
+        this.config = {
+            maxPoints: options.maxPoints || 128,
+            requiredKeystones: (options.requiredKeystones || []).filter(k => k),
+            offenseWeight: options.offenseWeight || 0.7,
+            defenseWeight: options.defenseWeight || 0.3,
+            skillTags: skillTags,
+            weaponTypes: weaponTypes,
+            startNodeId: startNodeId,
+            className: className,
+            ascendancy: options.ascendancy
+        };
+        
+        console.log("Optimizer configured:", {
+            class: className,
+            startNode: startNodeId,
+            skillTags: skillTags,
+            weaponTypes: weaponTypes,
+            requiredKeystones: this.config.requiredKeystones
+        });
     },
     
     /**
@@ -57,6 +78,7 @@ const TreeOptimizer = {
         // Reset results
         this.results = {
             allocatedNodes: [],
+            allocatedIds: new Set(),
             totalPoints: 0,
             offenseScore: 0,
             defenseScore: 0,
@@ -64,392 +86,432 @@ const TreeOptimizer = {
             statSummary: {}
         };
         
-        // Get all available nodes
-        const allNodes = POE2Data.getAllNodes();
+        // Validate start node
+        if (!this.config.startNodeId) {
+            console.error("No start node found!");
+            return this.results;
+        }
         
-        // Calculate scores for all nodes based on configuration
-        const scoredNodes = this.scoreAllNodes(allNodes);
+        console.log("Starting from node:", this.config.startNodeId);
         
-        // Get starting position
-        const classInfo = POE2Data.getClassForAscendancy(this.config.ascendancy);
-        const startNode = classInfo ? classInfo.startNode : 'warrior_start';
+        // Step 1: Allocate starting node
+        this.allocateNode(this.config.startNodeId);
         
-        // Phase 1: Allocate required keystones first
-        const requiredKeystones = this.config.requiredKeystones.filter(k => k);
-        requiredKeystones.forEach(keystoneId => {
-            if (POE2Data.keystones[keystoneId]) {
-                this.results.allocatedNodes.push({
-                    ...POE2Data.keystones[keystoneId],
-                    score: scoredNodes[keystoneId]?.totalScore || 0,
-                    required: true
-                });
+        // Step 2: Path to required keystones first
+        for (const keystoneId of this.config.requiredKeystones) {
+            if (!keystoneId || !POE2Data.keystones[keystoneId]) continue;
+            if (this.results.totalPoints >= this.config.maxPoints) break;
+            
+            console.log("Pathing to required keystone:", POE2Data.keystones[keystoneId].name);
+            this.pathToNode(keystoneId);
+        }
+        
+        // Step 3: Greedy expansion - always pick best CONNECTED node
+        let iterations = 0;
+        const maxIterations = this.config.maxPoints * 10; // Safety limit
+        
+        while (this.results.totalPoints < this.config.maxPoints && iterations < maxIterations) {
+            iterations++;
+            
+            const bestTarget = this.findBestTarget();
+            if (!bestTarget) {
+                console.log("No more good targets found");
+                break;
             }
-        });
+            
+            // Allocate the path to this node
+            if (!this.pathToNode(bestTarget.id)) {
+                console.log("Could not path to:", bestTarget.name);
+                continue;
+            }
+        }
         
-        // Phase 2: Greedy allocation of remaining points
-        const remainingPoints = this.config.maxPoints - this.results.allocatedNodes.length;
-        this.greedyAllocate(scoredNodes, remainingPoints);
-        
-        // Phase 3: Local optimization (swap low-value nodes for better ones)
-        this.localOptimize(scoredNodes);
-        
-        // Calculate final statistics
+        // Calculate final stats
         this.calculateFinalStats();
         
         const endTime = performance.now();
         console.log(`Optimization completed in ${(endTime - startTime).toFixed(2)}ms`);
+        console.log(`Allocated ${this.results.totalPoints} nodes`);
         
         return this.results;
     },
     
     /**
-     * Score all nodes based on configuration
+     * Allocate a single node
      */
-    scoreAllNodes: function(nodes) {
-        const scored = {};
+    allocateNode: function(nodeId) {
+        nodeId = String(nodeId);
         
-        Object.keys(nodes).forEach(nodeId => {
-            const node = nodes[nodeId];
-            scored[nodeId] = this.scoreNode(node);
+        if (this.results.allocatedIds.has(nodeId)) return false;
+        if (this.results.totalPoints >= this.config.maxPoints) return false;
+        
+        // Get node from any category
+        const node = POE2Data.allNodes[nodeId];
+        if (!node) {
+            console.warn("Node not found:", nodeId);
+            return false;
+        }
+        
+        const score = this.scoreNode(node);
+        
+        this.results.allocatedIds.add(nodeId);
+        this.results.allocatedNodes.push({
+            ...node,
+            score: score.total,
+            offenseContrib: score.offense,
+            defenseContrib: score.defense,
+            relevance: score.relevance
         });
+        this.results.totalPoints++;
         
-        return scored;
+        return true;
     },
     
     /**
-     * Score a single node
+     * Path to a node and allocate all nodes along the way
+     * Returns true if successful
      */
-    scoreNode: function(node) {
-        let relevanceScore = 1;
-        let offenseScore = node.offense || 0;
-        let defenseScore = node.defense || 0;
+    pathToNode: function(targetId) {
+        targetId = String(targetId);
         
-        // Calculate relevance based on skill tags
-        if (this.config.skillTags.length > 0 && node.tags) {
-            const matchingTags = node.tags.filter(tag => 
-                this.config.skillTags.includes(tag)
-            );
-            
-            // More matching tags = higher relevance
-            relevanceScore = 1 + (matchingTags.length * 0.5);
-            
-            // Bonus for exact matches on key damage types
-            const keyTags = ['fire', 'cold', 'lightning', 'physical', 'chaos', 'minion'];
-            const keyMatches = matchingTags.filter(t => keyTags.includes(t));
-            if (keyMatches.length > 0) {
-                relevanceScore *= 1.3;
+        if (this.results.allocatedIds.has(targetId)) return true;
+        
+        // Find path from any allocated node to target
+        const path = this.findPathFromAllocated(targetId);
+        
+        if (!path || path.length === 0) {
+            console.warn("No path found to node:", targetId);
+            return false;
+        }
+        
+        // Check if we have enough points
+        const pointsNeeded = path.filter(id => !this.results.allocatedIds.has(id)).length;
+        if (this.results.totalPoints + pointsNeeded > this.config.maxPoints) {
+            return false;
+        }
+        
+        // Allocate all nodes in path
+        for (const nodeId of path) {
+            if (!this.allocateNode(nodeId)) {
+                return false;
             }
-            
-            // Bonus for weapon type match
-            if (this.config.weaponType && node.tags) {
-                const weaponMatch = this.config.weaponType.some(w => 
-                    node.tags.includes(w) || node.stats?.some(s => s.toLowerCase().includes(w))
-                );
-                if (weaponMatch) {
-                    relevanceScore *= 1.4;
+        }
+        
+        return true;
+    },
+    
+    /**
+     * Find shortest path from any allocated node to target
+     */
+    findPathFromAllocated: function(targetId) {
+        targetId = String(targetId);
+        
+        if (this.results.allocatedIds.has(targetId)) return [];
+        
+        // BFS from all allocated nodes simultaneously
+        const visited = new Set(this.results.allocatedIds);
+        const queue = [];
+        
+        // Initialize with neighbors of all allocated nodes
+        for (const allocatedId of this.results.allocatedIds) {
+            const neighbors = POE2Data.getNeighbors(allocatedId);
+            for (const neighbor of neighbors) {
+                if (!visited.has(neighbor)) {
+                    queue.push({ nodeId: neighbor, path: [neighbor] });
                 }
             }
         }
         
-        // Apply offense/defense weighting
-        const weightedOffense = offenseScore * this.config.offenseWeight;
-        const weightedDefense = defenseScore * this.config.defenseWeight;
+        while (queue.length > 0) {
+            const { nodeId, path } = queue.shift();
+            
+            if (nodeId === targetId) {
+                return path;
+            }
+            
+            if (visited.has(nodeId)) continue;
+            visited.add(nodeId);
+            
+            const neighbors = POE2Data.getNeighbors(nodeId);
+            for (const neighbor of neighbors) {
+                if (!visited.has(neighbor)) {
+                    queue.push({ nodeId: neighbor, path: [...path, neighbor] });
+                }
+            }
+        }
         
-        // Node type multipliers
-        let typeMultiplier = 1;
-        if (node.type === 'keystone') typeMultiplier = 2.0;
-        else if (node.type === 'notable') typeMultiplier = 1.5;
+        return null;
+    },
+    
+    /**
+     * Find the best target node to path towards
+     */
+    findBestTarget: function() {
+        // Get all valuable nodes we haven't allocated
+        const candidates = [];
+        const valuableNodes = POE2Data.getValuableNodes();
         
-        // Calculate total score
-        const baseScore = (weightedOffense + weightedDefense) * relevanceScore;
-        const totalScore = baseScore * typeMultiplier;
+        for (const nodeId in valuableNodes) {
+            if (this.results.allocatedIds.has(nodeId)) continue;
+            
+            const node = valuableNodes[nodeId];
+            const score = this.scoreNode(node);
+            
+            // Skip nodes with very low relevance (wrong damage type etc)
+            if (score.relevance < 0.3) continue;
+            
+            // Calculate path cost
+            const path = this.findPathFromAllocated(nodeId);
+            if (!path) continue;
+            
+            const pathCost = path.length;
+            if (pathCost === 0) continue;
+            
+            // Check if we can afford it
+            if (this.results.totalPoints + pathCost > this.config.maxPoints) continue;
+            
+            // Value = score / cost (efficiency)
+            const efficiency = score.total / pathCost;
+            
+            candidates.push({
+                id: nodeId,
+                name: node.name,
+                type: node.type,
+                score: score.total,
+                pathCost: pathCost,
+                efficiency: efficiency,
+                relevance: score.relevance
+            });
+        }
+        
+        if (candidates.length === 0) return null;
+        
+        // Sort by efficiency (best value per point spent)
+        candidates.sort((a, b) => {
+            // Prefer higher relevance first
+            if (Math.abs(a.relevance - b.relevance) > 0.3) {
+                return b.relevance - a.relevance;
+            }
+            // Then by efficiency
+            return b.efficiency - a.efficiency;
+        });
+        
+        return candidates[0];
+    },
+    
+    /**
+     * Score a node based on skill compatibility
+     * CRITICAL: This properly penalizes wrong damage types
+     */
+    scoreNode: function(node) {
+        const nodeTags = node.tags || [];
+        const skillTags = this.config.skillTags;
+        
+        let relevance = 1.0;
+        
+        // === CONFLICT DETECTION ===
+        
+        // Attack vs Spell (MAJOR conflict)
+        const nodeIsSpell = nodeTags.includes('spell');
+        const nodeIsAttack = nodeTags.includes('attack') || nodeTags.includes('melee');
+        const skillIsSpell = skillTags.includes('spell');
+        const skillIsAttack = skillTags.includes('attack') || skillTags.includes('melee') || 
+                             skillTags.includes('bow') || skillTags.includes('crossbow');
+        
+        if (nodeIsSpell && skillIsAttack && !skillIsSpell) {
+            relevance *= 0.05; // Spell nodes for attack builds = almost useless
+        }
+        if (nodeIsAttack && skillIsSpell && !skillIsAttack) {
+            relevance *= 0.05; // Attack nodes for spell builds = almost useless
+        }
+        
+        // Melee vs Ranged (MAJOR conflict)
+        const nodeIsMelee = nodeTags.includes('melee');
+        const nodeIsRanged = nodeTags.includes('bow') || nodeTags.includes('crossbow') || nodeTags.includes('projectile');
+        const skillIsMelee = skillTags.includes('melee') || skillTags.includes('strike') || skillTags.includes('slam');
+        const skillIsRanged = skillTags.includes('bow') || skillTags.includes('crossbow') || skillTags.includes('projectile');
+        
+        if (nodeIsMelee && skillIsRanged && !skillIsMelee) {
+            relevance *= 0.05;
+        }
+        if (nodeIsRanged && skillIsMelee && !skillIsRanged) {
+            relevance *= 0.05;
+        }
+        
+        // Damage type conflict
+        const damageTypes = ['physical', 'fire', 'cold', 'lightning', 'chaos'];
+        const nodeDamageTypes = damageTypes.filter(t => nodeTags.includes(t));
+        const skillDamageTypes = damageTypes.filter(t => skillTags.includes(t));
+        
+        if (nodeDamageTypes.length > 0 && skillDamageTypes.length > 0) {
+            const matches = nodeDamageTypes.filter(t => skillDamageTypes.includes(t));
+            if (matches.length === 0) {
+                // Node has damage type that skill doesn't use
+                relevance *= 0.1;
+            } else {
+                // Matching damage type = bonus
+                relevance *= 1.3;
+            }
+        }
+        
+        // Weapon type conflict
+        const weaponTypes = ['sword', 'axe', 'mace', 'bow', 'crossbow', 'staff', 'wand', 'claw', 'dagger'];
+        const nodeWeapons = weaponTypes.filter(t => nodeTags.includes(t));
+        const skillWeapons = this.config.weaponTypes;
+        
+        if (nodeWeapons.length > 0 && skillWeapons.length > 0) {
+            const matches = nodeWeapons.filter(t => skillWeapons.includes(t));
+            if (matches.length === 0) {
+                relevance *= 0.1;
+            } else {
+                relevance *= 1.4;
+            }
+        }
+        
+        // Minion conflict
+        const nodeIsMinion = nodeTags.includes('minion');
+        const skillIsMinion = skillTags.includes('minion');
+        
+        if (nodeIsMinion && !skillIsMinion) {
+            relevance *= 0.02; // Minion nodes for non-minion = useless
+        }
+        if (!nodeIsMinion && skillIsMinion && (nodeIsAttack || nodeIsSpell)) {
+            relevance *= 0.2; // Self-damage for minion builds = less useful
+        }
+        
+        // === POSITIVE MATCHING ===
+        
+        // Tag matches
+        const matches = nodeTags.filter(t => skillTags.includes(t));
+        if (matches.length > 0) {
+            relevance *= (1 + matches.length * 0.15);
+        }
+        
+        // === CALCULATE SCORES ===
+        
+        const baseOffense = (node.offense || 0) * this.config.offenseWeight;
+        const baseDefense = (node.defense || 0) * this.config.defenseWeight;
+        
+        // Apply relevance to offense (defense is always useful)
+        const offense = baseOffense * relevance;
+        const defense = baseDefense;
+        
+        // Type multipliers
+        let typeMult = 1;
+        if (node.type === 'keystone') typeMult = 3;
+        else if (node.type === 'notable') typeMult = 2;
+        
+        const total = (offense + defense) * typeMult;
         
         return {
-            nodeId: node.id,
-            relevanceScore,
-            offenseScore: weightedOffense,
-            defenseScore: weightedDefense,
-            totalScore,
-            perPointValue: totalScore // For small nodes, this equals total; for paths, divide by path cost
+            offense: offense,
+            defense: defense,
+            relevance: relevance,
+            total: Math.max(0.01, total) // Minimum score for travel
         };
     },
     
     /**
-     * Greedy allocation of nodes
-     */
-    greedyAllocate: function(scoredNodes, pointBudget) {
-        const allocatedIds = new Set(this.results.allocatedNodes.map(n => n.id));
-        let pointsRemaining = pointBudget;
-        
-        // Create sorted list of nodes by score
-        const sortedNodes = Object.keys(scoredNodes)
-            .filter(id => !allocatedIds.has(id))
-            .map(id => ({
-                id,
-                node: POE2Data.getAllNodes()[id],
-                score: scoredNodes[id]
-            }))
-            .sort((a, b) => b.score.totalScore - a.score.totalScore);
-        
-        // Separate by type for balanced allocation
-        const keystones = sortedNodes.filter(n => n.node.type === 'keystone');
-        const notables = sortedNodes.filter(n => n.node.type === 'notable');
-        const smalls = sortedNodes.filter(n => n.node.type === 'small');
-        
-        // Strategy: Allocate best keystones first, then notables, then fill with smalls
-        // But respect the offense/defense split ratio
-        
-        // Calculate target offense/defense split for keystones
-        const keystoneOffenseTarget = Math.ceil(3 * this.config.offenseWeight); // Max 3 keystones
-        const keystoneDefenseTarget = 3 - keystoneOffenseTarget;
-        
-        let keystonesAllocated = { offense: 0, defense: 0 };
-        
-        // Allocate keystones
-        keystones.forEach(ks => {
-            if (pointsRemaining <= 0) return;
-            if (allocatedIds.has(ks.id)) return;
-            
-            const isOffensive = ks.node.offense > ks.node.defense;
-            
-            if (isOffensive && keystonesAllocated.offense < keystoneOffenseTarget) {
-                this.results.allocatedNodes.push({
-                    ...ks.node,
-                    score: ks.score.totalScore
-                });
-                allocatedIds.add(ks.id);
-                pointsRemaining--;
-                keystonesAllocated.offense++;
-            } else if (!isOffensive && keystonesAllocated.defense < keystoneDefenseTarget) {
-                this.results.allocatedNodes.push({
-                    ...ks.node,
-                    score: ks.score.totalScore
-                });
-                allocatedIds.add(ks.id);
-                pointsRemaining--;
-                keystonesAllocated.defense++;
-            }
-        });
-        
-        // Allocate notables (aim for ~30% of remaining points)
-        const notableTarget = Math.floor(pointsRemaining * 0.35);
-        let notablesAllocated = 0;
-        
-        notables.forEach(notable => {
-            if (pointsRemaining <= 0) return;
-            if (notablesAllocated >= notableTarget) return;
-            if (allocatedIds.has(notable.id)) return;
-            if (notable.score.totalScore < 3) return; // Skip low-value notables
-            
-            this.results.allocatedNodes.push({
-                ...notable.node,
-                score: notable.score.totalScore
-            });
-            allocatedIds.add(notable.id);
-            pointsRemaining--;
-            notablesAllocated++;
-        });
-        
-        // Fill remaining with small nodes
-        smalls.forEach(small => {
-            if (pointsRemaining <= 0) return;
-            if (allocatedIds.has(small.id)) return;
-            if (small.score.totalScore < 1) return; // Skip irrelevant nodes
-            
-            this.results.allocatedNodes.push({
-                ...small.node,
-                score: small.score.totalScore
-            });
-            allocatedIds.add(small.id);
-            pointsRemaining--;
-        });
-    },
-    
-    /**
-     * Local optimization - swap low value nodes for better alternatives
-     */
-    localOptimize: function(scoredNodes, iterations = 100) {
-        for (let i = 0; i < iterations; i++) {
-            // Find lowest scoring non-required node
-            let lowestIndex = -1;
-            let lowestScore = Infinity;
-            
-            this.results.allocatedNodes.forEach((node, idx) => {
-                if (!node.required && node.score < lowestScore) {
-                    lowestScore = node.score;
-                    lowestIndex = idx;
-                }
-            });
-            
-            if (lowestIndex === -1) break;
-            
-            // Find a better unallocated node
-            const allocatedIds = new Set(this.results.allocatedNodes.map(n => n.id));
-            const allNodes = POE2Data.getAllNodes();
-            
-            let bestReplacement = null;
-            let bestReplacementScore = lowestScore;
-            
-            Object.keys(scoredNodes).forEach(nodeId => {
-                if (allocatedIds.has(nodeId)) return;
-                
-                const node = allNodes[nodeId];
-                const score = scoredNodes[nodeId].totalScore;
-                
-                // Only replace with same type to maintain balance
-                if (node.type !== this.results.allocatedNodes[lowestIndex].type) return;
-                
-                if (score > bestReplacementScore) {
-                    bestReplacement = { ...node, score };
-                    bestReplacementScore = score;
-                }
-            });
-            
-            // Perform swap if beneficial
-            if (bestReplacement && bestReplacementScore > lowestScore * 1.1) {
-                this.results.allocatedNodes[lowestIndex] = bestReplacement;
-            } else {
-                break; // No more beneficial swaps
-            }
-        }
-    },
-    
-    /**
-     * Calculate final statistics
+     * Calculate final stats
      */
     calculateFinalStats: function() {
-        this.results.totalPoints = this.results.allocatedNodes.length;
         this.results.offenseScore = 0;
         this.results.defenseScore = 0;
         this.results.statSummary = {};
         
         let totalScore = 0;
-        let maxPossibleScore = 0;
         
         this.results.allocatedNodes.forEach(node => {
-            // Accumulate offense/defense
-            this.results.offenseScore += (node.offense || 0);
-            this.results.defenseScore += (node.defense || 0);
-            totalScore += node.score || 0;
+            this.results.offenseScore += (node.offenseContrib || 0);
+            this.results.defenseScore += (node.defenseContrib || 0);
+            totalScore += (node.score || 0);
             
-            // Track individual stats
-            if (node.stats) {
-                node.stats.forEach(stat => {
-                    const parsed = this.parseStat(stat);
-                    if (parsed.key) {
-                        if (!this.results.statSummary[parsed.key]) {
-                            this.results.statSummary[parsed.key] = 0;
-                        }
-                        this.results.statSummary[parsed.key] += parsed.value;
+            // Aggregate stats
+            (node.stats || []).forEach(stat => {
+                const match = stat.match(/([+-]?\d+(?:\.\d+)?)/);
+                if (match) {
+                    const key = stat.replace(match[0], '#').trim();
+                    if (!this.results.statSummary[key]) {
+                        this.results.statSummary[key] = 0;
                     }
-                });
-            }
-            
-            // Calculate max possible for efficiency
-            maxPossibleScore += node.type === 'keystone' ? 30 : 
-                               node.type === 'notable' ? 15 : 5;
+                    this.results.statSummary[key] += parseFloat(match[1]);
+                }
+            });
         });
         
-        // Calculate efficiency
-        this.results.efficiency = maxPossibleScore > 0 ? 
-            Math.round((totalScore / maxPossibleScore) * 100) : 0;
+        // Efficiency calculation
+        const maxPossible = this.results.totalPoints * 5;
+        this.results.efficiency = maxPossible > 0 ? 
+            Math.min(100, Math.round((totalScore / maxPossible) * 100)) : 0;
         
-        // Sort nodes by type for display
+        // Sort nodes: keystones > notables > small
         this.results.allocatedNodes.sort((a, b) => {
-            const typeOrder = { keystone: 0, notable: 1, small: 2 };
-            const typeDiff = typeOrder[a.type] - typeOrder[b.type];
+            const order = { keystone: 0, notable: 1, small: 2 };
+            const typeDiff = (order[a.type] || 3) - (order[b.type] || 3);
             if (typeDiff !== 0) return typeDiff;
             return (b.score || 0) - (a.score || 0);
         });
     },
     
     /**
-     * Parse a stat string to extract key and value
+     * Export node IDs as comma-separated string
      */
-    parseStat: function(statStr) {
-        // Try to match patterns like "+10% Fire Damage" or "+25 to Maximum Life"
-        const patterns = [
-            /([+-]?\d+(?:\.\d+)?)\s*%?\s+(.+)/,
-            /(.+?):\s*([+-]?\d+(?:\.\d+)?%?)/
-        ];
-        
-        for (const pattern of patterns) {
-            const match = statStr.match(pattern);
-            if (match) {
-                const value = parseFloat(match[1]);
-                const key = match[2].trim();
-                if (!isNaN(value)) {
-                    return { key, value };
-                }
-            }
-        }
-        
-        return { key: statStr, value: 1 };
+    exportNodeList: function() {
+        return Array.from(this.results.allocatedIds)
+            .map(id => parseInt(id))
+            .filter(id => !isNaN(id))
+            .sort((a, b) => a - b)
+            .join(',');
     },
     
     /**
-     * Export build to PoB format
-     */
-    exportToPoB: function() {
-        // Generate a PoB-compatible export string
-        const nodeIds = this.results.allocatedNodes.map(n => n.id);
-        const exportData = {
-            version: POE2Data.version,
-            class: this.config.ascendancy,
-            nodes: nodeIds
-        };
-        
-        // Base64 encode (simplified - real PoB uses deflate compression)
-        const jsonStr = JSON.stringify(exportData);
-        return btoa(jsonStr);
-    },
-    
-    /**
-     * Export build to JSON
+     * Export as JSON
      */
     exportToJSON: function() {
         return {
-            config: this.config,
+            config: {
+                ascendancy: this.config.ascendancy,
+                class: this.config.className,
+                skill: this.config.skillTags.join(','),
+                weapons: this.config.weaponTypes.join(','),
+                offenseWeight: this.config.offenseWeight,
+                maxPoints: this.config.maxPoints
+            },
             results: {
                 totalPoints: this.results.totalPoints,
-                offenseScore: this.results.offenseScore,
-                defenseScore: this.results.defenseScore,
+                offenseScore: Math.round(this.results.offenseScore * 10) / 10,
+                defenseScore: Math.round(this.results.defenseScore * 10) / 10,
                 efficiency: this.results.efficiency,
-                nodes: this.results.allocatedNodes.map(n => ({
-                    id: n.id,
-                    name: n.name,
-                    type: n.type,
-                    stats: n.stats,
-                    score: n.score
-                })),
+                nodeIds: Array.from(this.results.allocatedIds),
+                keystones: this.results.allocatedNodes
+                    .filter(n => n.type === 'keystone')
+                    .map(n => ({ id: n.id, name: n.name, stats: n.stats })),
+                notables: this.results.allocatedNodes
+                    .filter(n => n.type === 'notable')
+                    .map(n => ({ id: n.id, name: n.name, stats: n.stats })),
                 statSummary: this.results.statSummary
             }
         };
     },
     
     /**
-     * Generate share URL
+     * Generate PoEPlanner-style URL
      */
-    generateShareUrl: function() {
-        const data = this.exportToPoB();
-        const baseUrl = window.location.origin + window.location.pathname;
-        return `${baseUrl}?build=${encodeURIComponent(data)}`;
-    },
-    
-    /**
-     * Load build from share URL
-     */
-    loadFromUrl: function(urlParam) {
-        try {
-            const jsonStr = atob(decodeURIComponent(urlParam));
-            const data = JSON.parse(jsonStr);
-            return data;
-        } catch (e) {
-            console.error("Failed to load build from URL:", e);
-            return null;
-        }
+    generatePlannerUrl: function() {
+        const nodeIds = Array.from(this.results.allocatedIds)
+            .map(id => parseInt(id))
+            .filter(id => !isNaN(id));
+        
+        // Base64 encode the node list
+        const data = {
+            v: POE2Data.version,
+            c: this.config.className,
+            n: nodeIds
+        };
+        
+        const encoded = btoa(JSON.stringify(data));
+        return encoded;
     }
 };
 
-// Export for use
 window.TreeOptimizer = TreeOptimizer;
