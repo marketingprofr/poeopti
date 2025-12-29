@@ -164,11 +164,19 @@ const POE2Data = {
             
             this.isLoaded = true;
             
-            console.log(`Loaded: ${Object.keys(this.keystones).length} keystones, ` +
-                       `${Object.keys(this.notables).length} notables, ` +
-                       `${Object.keys(this.smallNodes).length} small nodes`);
-            console.log(`Total nodes: ${Object.keys(this.allNodes).length}`);
+            console.log("=== LOAD COMPLETE ===");
+            console.log(`Keystones: ${Object.keys(this.keystones).length}`);
+            console.log(`Notables: ${Object.keys(this.notables).length}`);
+            console.log(`Small nodes: ${Object.keys(this.smallNodes).length}`);
+            console.log(`Total in allNodes: ${Object.keys(this.allNodes).length}`);
             console.log(`Class starts:`, this.classStartNodes);
+            
+            // Verify class start nodes exist and have connections
+            Object.entries(this.classStartNodes).forEach(([classIdx, nodeId]) => {
+                const exists = !!this.allNodes[nodeId];
+                const connections = this.connections[nodeId] || [];
+                console.log(`Class ${classIdx} start node ${nodeId}: exists=${exists}, connections=${connections.length}`, connections.slice(0, 5));
+            });
             
             return true;
         } catch (e) {
@@ -196,16 +204,33 @@ const POE2Data = {
             }
         }
         
-        // 2. Check for root node with out array
-        if (data.root && data.root.out) {
+        // 2. Check for root node with out array (and set up connections)
+        if (data.root && data.root.out && Array.isArray(data.root.out)) {
             data.root.out.forEach((nodeId, idx) => {
-                this.classStartNodes[idx] = String(nodeId);
+                const nodeIdStr = String(nodeId);
+                this.classStartNodes[idx] = nodeIdStr;
+                
+                // IMPORTANT: Make sure root connects to class starts
+                // The root node acts as a virtual center connecting all class starts
+                if (!this.connections['root']) {
+                    this.connections['root'] = [];
+                }
+                this.connections['root'].push(nodeIdStr);
             });
-            console.log("Found class starts from root.out");
+            console.log("Found class starts from root.out:", this.classStartNodes);
             return;
         }
         
-        // 3. Check nodes for class start indicators
+        // 3. Check nodes object for root entry
+        if (nodes.root && nodes.root.out) {
+            nodes.root.out.forEach((nodeId, idx) => {
+                this.classStartNodes[idx] = String(nodeId);
+            });
+            console.log("Found class starts from nodes.root");
+            return;
+        }
+        
+        // 4. Check nodes for class start indicators
         Object.keys(nodes).forEach(nodeId => {
             const node = nodes[nodeId];
             if (!node || typeof node !== 'object') return;
@@ -228,15 +253,27 @@ const POE2Data = {
             }
         });
         
-        // 4. If still no starts found, use the first few nodes with many connections
+        // 5. If still no starts found, use nodes with high connectivity
         if (Object.keys(this.classStartNodes).length === 0) {
-            console.log("No class starts found, using fallback");
-            // Find nodes with the most connections as likely central nodes
-            const nodeIds = Object.keys(nodes).filter(id => nodes[id] && typeof nodes[id] === 'object');
-            if (nodeIds.length > 0) {
-                // Just use the first node as a fallback
-                this.classStartNodes[0] = nodeIds[0];
-            }
+            console.log("No class starts found, using fallback - searching for highly connected nodes");
+            
+            // Find nodes with many connections as potential class starts
+            const nodeConnections = {};
+            Object.keys(nodes).forEach(nodeId => {
+                const node = nodes[nodeId];
+                if (node && node.connections) {
+                    nodeConnections[nodeId] = node.connections.length;
+                }
+            });
+            
+            // Get top connected nodes
+            const sorted = Object.entries(nodeConnections)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 7);
+            
+            sorted.forEach((entry, idx) => {
+                this.classStartNodes[idx] = entry[0];
+            });
         }
         
         console.log("Found class starts:", this.classStartNodes);
@@ -249,13 +286,12 @@ const POE2Data = {
         let keystoneCount = 0;
         let notableCount = 0;
         let smallCount = 0;
-        let skippedCount = 0;
+        let travelCount = 0;
         
         Object.keys(nodes).forEach(nodeId => {
             // Skip non-object entries
             const rawNode = nodes[nodeId];
             if (!rawNode || typeof rawNode !== 'object') {
-                skippedCount++;
                 return;
             }
             
@@ -263,18 +299,6 @@ const POE2Data = {
             const name = rawNode.name || rawNode.dn || `Node ${nodeId}`;
             const stats = rawNode.stats || rawNode.sd || [];
             const icon = rawNode.icon || '';
-            
-            // Skip mastery/jewel nodes
-            if (rawNode.isMastery || rawNode.isJewelSocket) {
-                skippedCount++;
-                return;
-            }
-            
-            // Skip ascendancy nodes (for now)
-            if (rawNode.ascendancyName || rawNode.isAscendancyStart) {
-                skippedCount++;
-                return;
-            }
             
             // Determine type from icon path or name patterns
             let type = 'small';
@@ -312,12 +336,15 @@ const POE2Data = {
                 group: rawNode.group,
                 orbit: rawNode.orbit,
                 orbitIndex: rawNode.orbitIndex,
-                skill: rawNode.skill
+                skill: rawNode.skill,
+                // Track if this is a "valuable" node or just travel
+                isTravel: stats.length === 0 && !rawNode.isAttribute
             };
             
+            // ALWAYS add to allNodes (needed for pathfinding)
             this.allNodes[nodeId] = node;
             
-            // Categorize
+            // Categorize for scoring
             if (type === 'keystone') {
                 this.keystones[nodeId] = node;
                 keystoneCount++;
@@ -328,12 +355,12 @@ const POE2Data = {
                 this.smallNodes[nodeId] = node;
                 smallCount++;
             } else {
-                // Travel node - still add to allNodes but not to categories
-                smallCount++;
+                // Travel node - in allNodes but not in scoring categories
+                travelCount++;
             }
         });
         
-        console.log(`Parsed: ${keystoneCount} keystones, ${notableCount} notables, ${smallCount} small, ${skippedCount} skipped`);
+        console.log(`Parsed: ${keystoneCount} keystones, ${notableCount} notables, ${smallCount} small, ${travelCount} travel`);
     },
     
     /**
@@ -377,6 +404,7 @@ const POE2Data = {
      */
     buildConnections: function(nodes) {
         let connectionCount = 0;
+        const missingNodes = new Set();
         
         // First pass: collect all connections
         Object.keys(nodes).forEach(nodeId => {
@@ -394,13 +422,18 @@ const POE2Data = {
                     this.connections[nodeId].push(targetId);
                     connectionCount++;
                 }
+                
+                // Track if target node doesn't exist
+                if (!this.allNodes[targetId] && !nodes[targetId]) {
+                    missingNodes.add(targetId);
+                }
             });
         });
         
         // Second pass: make bidirectional
         const nodeIds = Object.keys(this.connections);
         nodeIds.forEach(nodeId => {
-            const neighbors = [...this.connections[nodeId]]; // Copy to avoid mutation during iteration
+            const neighbors = [...this.connections[nodeId]];
             neighbors.forEach(targetId => {
                 if (!this.connections[targetId]) {
                     this.connections[targetId] = [];
@@ -411,7 +444,46 @@ const POE2Data = {
             });
         });
         
+        // Create stub nodes for missing node IDs (needed for pathfinding)
+        missingNodes.forEach(nodeId => {
+            if (!this.allNodes[nodeId]) {
+                this.allNodes[nodeId] = {
+                    id: String(nodeId),
+                    name: `Travel ${nodeId}`,
+                    type: 'small',
+                    stats: [],
+                    tags: [],
+                    offense: 0,
+                    defense: 0,
+                    isTravel: true,
+                    isStub: true
+                };
+            }
+        });
+        
+        // Also ensure all class start nodes exist
+        Object.values(this.classStartNodes).forEach(nodeId => {
+            if (!this.allNodes[nodeId]) {
+                this.allNodes[nodeId] = {
+                    id: String(nodeId),
+                    name: `Class Start ${nodeId}`,
+                    type: 'small',
+                    stats: [],
+                    tags: [],
+                    offense: 0,
+                    defense: 0,
+                    isTravel: true,
+                    isClassStart: true
+                };
+                // Make sure it's in connections too
+                if (!this.connections[nodeId]) {
+                    this.connections[nodeId] = [];
+                }
+            }
+        });
+        
         console.log(`Built ${connectionCount} connections across ${Object.keys(this.connections).length} nodes`);
+        console.log(`Created ${missingNodes.size} stub nodes for pathfinding`);
         
         // Log a sample connection
         const sampleNodeId = Object.keys(this.connections)[0];

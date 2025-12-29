@@ -92,10 +92,14 @@ const TreeOptimizer = {
             return this.results;
         }
         
+        console.log("=== OPTIMIZATION START ===");
         console.log("Starting from node:", this.config.startNodeId);
+        console.log("Start node exists in allNodes:", !!POE2Data.allNodes[this.config.startNodeId]);
+        console.log("Start node connections:", POE2Data.getNeighbors(this.config.startNodeId));
         
         // Step 1: Allocate starting node
         this.allocateNode(this.config.startNodeId);
+        console.log("After allocating start, total points:", this.results.totalPoints);
         
         // Step 2: Path to required keystones first
         for (const keystoneId of this.config.requiredKeystones) {
@@ -103,25 +107,26 @@ const TreeOptimizer = {
             if (this.results.totalPoints >= this.config.maxPoints) break;
             
             console.log("Pathing to required keystone:", POE2Data.keystones[keystoneId].name);
-            this.pathToNode(keystoneId);
+            const success = this.pathToNode(keystoneId);
+            if (!success) {
+                console.log("Could not path to:", POE2Data.keystones[keystoneId].name);
+            }
         }
         
         // Step 3: Greedy expansion - always pick best CONNECTED node
         let iterations = 0;
-        const maxIterations = this.config.maxPoints * 10; // Safety limit
+        const maxIterations = this.config.maxPoints * 10;
         
         while (this.results.totalPoints < this.config.maxPoints && iterations < maxIterations) {
             iterations++;
             
             const bestTarget = this.findBestTarget();
             if (!bestTarget) {
-                console.log("No more good targets found");
+                console.log("No more good targets found after", iterations, "iterations");
                 break;
             }
             
-            // Allocate the path to this node
             if (!this.pathToNode(bestTarget.id)) {
-                console.log("Could not path to:", bestTarget.name);
                 continue;
             }
         }
@@ -132,6 +137,7 @@ const TreeOptimizer = {
         const endTime = performance.now();
         console.log(`Optimization completed in ${(endTime - startTime).toFixed(2)}ms`);
         console.log(`Allocated ${this.results.totalPoints} nodes`);
+        console.log("=== OPTIMIZATION END ===");
         
         return this.results;
     },
@@ -142,14 +148,17 @@ const TreeOptimizer = {
     allocateNode: function(nodeId) {
         nodeId = String(nodeId);
         
-        if (this.results.allocatedIds.has(nodeId)) return false;
+        if (this.results.allocatedIds.has(nodeId)) return true; // Already allocated = success
         if (this.results.totalPoints >= this.config.maxPoints) return false;
         
-        // Get node from any category
+        // Get node from allNodes
         const node = POE2Data.allNodes[nodeId];
         if (!node) {
-            console.warn("Node not found:", nodeId);
-            return false;
+            // Node doesn't exist - might be a mastery/jewel/ascendancy node
+            // Still mark as allocated to allow pathing through it
+            this.results.allocatedIds.add(nodeId);
+            // Don't increment points for unknown nodes
+            return true;
         }
         
         const score = this.scoreNode(node);
