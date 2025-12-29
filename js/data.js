@@ -48,10 +48,17 @@ const POE2Data = {
     },
     
     /**
-     * Get all valuable nodes
+     * Get all valuable nodes (excluding travel nodes)
      */
     getValuableNodes: function() {
         return { ...this.keystones, ...this.notables, ...this.smallNodes };
+    },
+    
+    /**
+     * Get all nodes (alias for compatibility)
+     */
+    getAllNodes: function() {
+        return this.allNodes;
     },
     
     /**
