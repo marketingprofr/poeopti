@@ -84,39 +84,36 @@ const POE2Data = {
      * Get class start node
      */
     getClassStartNode: function(className) {
-        const classMap = {
-            'warrior': 0,
-            'marauder': 1,
-            'ranger': 2,
-            'mercenary': 3,
-            'sorceress': 4,
-            'witch': 5,
-            'monk': 6
-        };
-        
-        const idx = classMap[className?.toLowerCase()];
-        if (idx !== undefined && this.classStartNodes[idx]) {
-            return this.classStartNodes[idx];
+        const key = className?.toLowerCase();
+        if (key && this.classStartNodes[key]) {
+            return this.classStartNodes[key];
         }
         
-        // Return first available
-        const starts = Object.values(this.classStartNodes);
-        return starts.length > 0 ? starts[0] : null;
+        console.warn("No start node for class:", className, "Available:", Object.keys(this.classStartNodes));
+        return null;
     },
     
     /**
      * Compute which nodes are reachable from each class (run after loading)
      */
     computeClassReachableNodes: function() {
-        const classNames = ['warrior', 'marauder', 'ranger', 'mercenary', 'sorceress', 'witch', 'monk'];
         const allClassStarts = new Set(Object.values(this.classStartNodes));
         
-        classNames.forEach((className, idx) => {
-            const startNodeId = this.classStartNodes[idx];
+        console.log("Computing class reachable nodes...");
+        console.log("Class start nodes:", this.classStartNodes);
+        
+        // Iterate over the actual class names we have start nodes for
+        Object.keys(this.classStartNodes).forEach(className => {
+            const startNodeId = this.classStartNodes[className];
             if (!startNodeId) {
+                console.log(`Class ${className}: NO START NODE FOUND`);
                 this.classReachableNodes[className] = new Set();
                 return;
             }
+            
+            // Check if start node has connections
+            const startConnections = this.connections[startNodeId] || [];
+            console.log(`Class ${className} start ${startNodeId} has ${startConnections.length} connections:`, startConnections.slice(0, 5));
             
             // BFS from class start, but DON'T cross into other class start areas
             const reachable = new Set();
@@ -258,71 +255,73 @@ const POE2Data = {
     findClassStarts: function(data, nodes) {
         // Try different possible locations
         
-        // 1. Check for classes array
+        // 1. Check for classes array with name mapping
         if (data.classes && Array.isArray(data.classes)) {
             data.classes.forEach((cls, idx) => {
-                if (cls.startNode) {
-                    this.classStartNodes[idx] = String(cls.startNode);
+                const startNode = cls.startNode || cls.ascendancies?.[0]?.startNode;
+                const className = cls.name?.toLowerCase();
+                
+                if (startNode && className) {
+                    this.classStartNodes[className] = String(startNode);
+                    console.log(`Class ${className}: start node ${startNode}`);
                 }
             });
             if (Object.keys(this.classStartNodes).length > 0) {
-                console.log("Found class starts from classes array");
+                console.log("Found class starts from classes array:", this.classStartNodes);
                 return;
             }
         }
         
-        // 2. Check for root node with out array
-        // NOTE: We store the class starts but do NOT connect them via root
-        // This prevents cross-class pathing
+        // 2. Check for root node with out array - cross-reference with classes
         if (data.root && data.root.out && Array.isArray(data.root.out)) {
-            data.root.out.forEach((nodeId, idx) => {
-                const nodeIdStr = String(nodeId);
-                this.classStartNodes[idx] = nodeIdStr;
-            });
+            if (data.classes && Array.isArray(data.classes)) {
+                data.root.out.forEach((nodeId, arrayIdx) => {
+                    const cls = data.classes[arrayIdx];
+                    const className = cls?.name?.toLowerCase();
+                    if (className) {
+                        this.classStartNodes[className] = String(nodeId);
+                        console.log(`root.out[${arrayIdx}] = ${nodeId} -> class ${className}`);
+                    }
+                });
+            }
             console.log("Found class starts from root.out:", this.classStartNodes);
-            return;
+            if (Object.keys(this.classStartNodes).length > 0) {
+                return;
+            }
         }
         
         // 3. Check nodes object for root entry
-        if (nodes.root && nodes.root.out) {
+        if (nodes.root && nodes.root.out && data.classes) {
             nodes.root.out.forEach((nodeId, idx) => {
-                this.classStartNodes[idx] = String(nodeId);
+                const cls = data.classes[idx];
+                const className = cls?.name?.toLowerCase();
+                if (className) {
+                    this.classStartNodes[className] = String(nodeId);
+                }
             });
             console.log("Found class starts from nodes.root");
-            return;
+            if (Object.keys(this.classStartNodes).length > 0) {
+                return;
+            }
         }
         
-        // 4. Check nodes for class start indicators
+        // 4. Check nodes for class start indicators by name
         Object.keys(nodes).forEach(nodeId => {
             const node = nodes[nodeId];
             if (!node || typeof node !== 'object') return;
             
-            if (node.isClassStart || node.classStartIndex !== undefined) {
-                const idx = node.classStartIndex !== undefined ? node.classStartIndex : Object.keys(this.classStartNodes).length;
-                this.classStartNodes[idx] = String(nodeId);
-                return;
-            }
+            const nodeName = node.name?.toLowerCase();
+            const classNames = ['warrior', 'marauder', 'ranger', 'mercenary', 'sorceress', 'witch', 'monk'];
             
-            const className = node.name?.toLowerCase();
-            const classMap = {
-                'warrior': 0, 'marauder': 1, 'ranger': 2, 'mercenary': 3,
-                'sorceress': 4, 'witch': 5, 'monk': 6
-            };
-            if (classMap[className] !== undefined) {
-                this.classStartNodes[classMap[className]] = String(nodeId);
+            if (classNames.includes(nodeName)) {
+                this.classStartNodes[nodeName] = String(nodeId);
             }
         });
         
-        // 5. Fallback
+        // 5. Fallback - shouldn't happen with proper tree.json
         if (Object.keys(this.classStartNodes).length === 0) {
-            console.log("No class starts found, using fallback");
-            const nodeIds = Object.keys(nodes).filter(id => nodes[id] && typeof nodes[id] === 'object');
-            if (nodeIds.length > 0) {
-                this.classStartNodes[0] = nodeIds[0];
-            }
+            console.error("No class starts found! Tree may be malformed.");
         }
-        
-        console.log("Found class starts:", this.classStartNodes);
     },
     
     /**
