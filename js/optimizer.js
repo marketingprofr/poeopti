@@ -34,8 +34,8 @@ const TreeOptimizer = {
      * Configure the optimizer
      */
     configure: function(options) {
-        // Get class from ascendancy
-        const className = POE2Data.getClassForAscendancy(options.ascendancy);
+        // Get class from ascendancy - this now does smart fallback
+        let className = POE2Data.getClassForAscendancy(options.ascendancy);
         
         // Get skill tags from the select element
         const skillSelect = document.getElementById('skill');
@@ -45,8 +45,19 @@ const TreeOptimizer = {
         const weaponTypes = selectedOption ? 
             (selectedOption.dataset.weapon || '').split(',').filter(t => t.trim()) : [];
         
-        // Find start node
+        // Find start node - this also does fallback
         const startNodeId = POE2Data.getClassStartNode(className);
+        
+        // If we got a start node, figure out which class it actually belongs to
+        if (startNodeId) {
+            // Find which class this start node belongs to
+            for (const [cls, nodeId] of Object.entries(POE2Data.classStartNodes)) {
+                if (nodeId === startNodeId) {
+                    className = cls;
+                    break;
+                }
+            }
+        }
         
         this.config = {
             maxPoints: options.maxPoints || 128,
@@ -65,7 +76,8 @@ const TreeOptimizer = {
             startNode: startNodeId,
             skillTags: skillTags,
             weaponTypes: weaponTypes,
-            requiredKeystones: this.config.requiredKeystones
+            requiredKeystones: this.config.requiredKeystones,
+            availableClasses: Object.keys(POE2Data.classStartNodes)
         });
     },
     
