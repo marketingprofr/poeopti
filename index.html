@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POE2 Passive Tree Optimizer</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>⚔️ POE2 Passive Tree Optimizer</h1>
+            <p class="subtitle">Find the optimal 128-point path for your build</p>
+        </header>
+
+        <main>
+            <section class="config-panel">
+                <h2>Build Configuration</h2>
+                
+                <div class="form-group">
+                    <label for="ascendancy">Starting Ascendancy</label>
+                    <select id="ascendancy">
+                        <optgroup label="Strength">
+                            <option value="titan">Titan (Warrior)</option>
+                            <option value="warbringer">Warbringer (Warrior)</option>
+                            <option value="bloodmage">Blood Mage (Marauder)</option>
+                            <option value="infernalist">Infernalist (Marauder)</option>
+                        </optgroup>
+                        <optgroup label="Dexterity">
+                            <option value="deadeye">Deadeye (Ranger)</option>
+                            <option value="pathfinder">Pathfinder (Ranger)</option>
+                            <option value="witchhunter">Witchhunter (Mercenary)</option>
+                            <option value="gemlinglegionnaire">Gemling Legionnaire (Mercenary)</option>
+                        </optgroup>
+                        <optgroup label="Intelligence">
+                            <option value="chronomancer">Chronomancer (Sorceress)</option>
+                            <option value="stormweaver">Stormweaver (Sorceress)</option>
+                            <option value="acolyte">Acolyte of Chayula (Witch)</option>
+                            <option value="invoker">Invoker (Witch)</option>
+                        </optgroup>
+                        <optgroup label="Hybrid">
+                            <option value="chayuladisciple">Disciple of Chayula (Monk)</option>
+                            <option value="invokermonk">Invoker of Storms (Monk)</option>
+                        </optgroup>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="skill">Target Damage Skill</label>
+                    <select id="skill">
+                        <optgroup label="Melee - Physical">
+                            <option value="earthquake" data-tags="attack,aoe,slam,melee,physical" data-weapon="mace,axe,staff">Earthquake</option>
+                            <option value="sunder" data-tags="attack,aoe,slam,melee,physical" data-weapon="mace,axe,staff">Sunder</option>
+                            <option value="groundslam" data-tags="attack,aoe,slam,melee,physical" data-weapon="mace,staff">Ground Slam</option>
+                            <option value="heavystrike" data-tags="attack,melee,strike,physical" data-weapon="mace,axe,sword">Heavy Strike</option>
+                            <option value="bleedingslam" data-tags="attack,aoe,slam,melee,physical,bleed" data-weapon="axe,sword">Bleeding Slam</option>
+                        </optgroup>
+                        <optgroup label="Melee - Elemental">
+                            <option value="glacialhammer" data-tags="attack,melee,strike,cold" data-weapon="mace,sceptre">Glacial Hammer</option>
+                            <option value="moltenslam" data-tags="attack,aoe,slam,melee,fire" data-weapon="mace,staff">Molten Slam</option>
+                            <option value="lightingstrike" data-tags="attack,melee,strike,lightning,projectile" data-weapon="sword,claw">Lightning Strike</option>
+                        </optgroup>
+                        <optgroup label="Ranged - Bow">
+                            <option value="lightningarrow" data-tags="attack,projectile,bow,lightning,aoe" data-weapon="bow">Lightning Arrow</option>
+                            <option value="rainarrows" data-tags="attack,projectile,bow,physical,aoe" data-weapon="bow">Rain of Arrows</option>
+                            <option value="icearrow" data-tags="attack,projectile,bow,cold" data-weapon="bow">Ice Shot</option>
+                            <option value="poisonarrow" data-tags="attack,projectile,bow,chaos,poison" data-weapon="bow">Poison Arrow</option>
+                        </optgroup>
+                        <optgroup label="Ranged - Crossbow">
+                            <option value="explosiveshot" data-tags="attack,projectile,crossbow,fire,aoe" data-weapon="crossbow">Explosive Shot</option>
+                            <option value="powershot" data-tags="attack,projectile,crossbow,physical" data-weapon="crossbow">Power Shot</option>
+                            <option value="armorpiercing" data-tags="attack,projectile,crossbow,physical" data-weapon="crossbow">Armor Piercing Shot</option>
+                        </optgroup>
+                        <optgroup label="Spells - Fire">
+                            <option value="fireball" data-tags="spell,projectile,fire,aoe" data-weapon="wand,sceptre,staff">Fireball</option>
+                            <option value="flamewall" data-tags="spell,fire,aoe,duration" data-weapon="wand,sceptre,staff">Flame Wall</option>
+                            <option value="meteors" data-tags="spell,fire,aoe" data-weapon="wand,sceptre,staff">Meteor</option>
+                        </optgroup>
+                        <optgroup label="Spells - Cold">
+                            <option value="icenova" data-tags="spell,cold,aoe" data-weapon="wand,sceptre,staff">Ice Nova</option>
+                            <option value="frostbolt" data-tags="spell,projectile,cold" data-weapon="wand,sceptre,staff">Frostbolt</option>
+                            <option value="glacialcascade" data-tags="spell,cold,aoe,physical" data-weapon="wand,sceptre,staff">Glacial Cascade</option>
+                        </optgroup>
+                        <optgroup label="Spells - Lightning">
+                            <option value="arclightning" data-tags="spell,lightning,chaining" data-weapon="wand,sceptre,staff">Arc</option>
+                            <option value="stormcall" data-tags="spell,lightning,aoe,duration" data-weapon="wand,sceptre,staff">Storm Call</option>
+                            <option value="sparkspell" data-tags="spell,projectile,lightning" data-weapon="wand,sceptre,staff">Spark</option>
+                        </optgroup>
+                        <optgroup label="Spells - Chaos/Poison">
+                            <option value="contagion" data-tags="spell,chaos,aoe,duration" data-weapon="wand,sceptre,staff">Contagion</option>
+                            <option value="essencedrain" data-tags="spell,projectile,chaos,duration,dot" data-weapon="wand,sceptre,staff">Essence Drain</option>
+                        </optgroup>
+                        <optgroup label="Minions">
+                            <option value="raisezombie" data-tags="spell,minion,duration" data-weapon="wand,sceptre,staff">Raise Zombie</option>
+                            <option value="summonskeleton" data-tags="spell,minion,duration" data-weapon="wand,sceptre,staff">Summon Skeleton</option>
+                            <option value="summonspectre" data-tags="spell,minion,duration" data-weapon="wand,sceptre,staff">Summon Spectre</option>
+                        </optgroup>
+                    </select>
+                    <small class="skill-info" id="skillInfo"></small>
+                </div>
+
+                <div class="form-group">
+                    <label for="offenseDefense">Offense / Defense Split: <span id="splitValue">70%</span> Offense</label>
+                    <input type="range" id="offenseDefense" min="0" max="100" value="70" step="5">
+                    <div class="split-labels">
+                        <span>Full Defense</span>
+                        <span>Full Offense</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Required Keystones (up to 3)</label>
+                    <div class="keystones-container">
+                        <select id="keystone1">
+                            <option value="">-- None --</option>
+                        </select>
+                        <select id="keystone2">
+                            <option value="">-- None --</option>
+                        </select>
+                        <select id="keystone3">
+                            <option value="">-- None --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="pointBudget">Point Budget</label>
+                    <input type="number" id="pointBudget" value="128" min="1" max="128">
+                </div>
+
+                <button id="optimizeBtn" class="btn-primary">
+                    <span class="btn-icon">⚡</span>
+                    Optimize Tree
+                </button>
+            </section>
+
+            <section class="results-panel" id="resultsPanel">
+                <h2>Optimization Results</h2>
+                
+                <div id="loadingIndicator" class="loading hidden">
+                    <div class="spinner"></div>
+                    <p>Calculating optimal path...</p>
+                </div>
+
+                <div id="results" class="hidden">
+                    <div class="stats-summary">
+                        <div class="stat-card">
+                            <span class="stat-value" id="totalPoints">0</span>
+                            <span class="stat-label">Points Used</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-value" id="offenseScore">0</span>
+                            <span class="stat-label">Offense Score</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-value" id="defenseScore">0</span>
+                            <span class="stat-label">Defense Score</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-value" id="efficiency">0%</span>
+                            <span class="stat-label">Path Efficiency</span>
+                        </div>
+                    </div>
+
+                    <div class="allocated-stats" id="allocatedStats">
+                        <h3>Allocated Stats Summary</h3>
+                        <div id="statsList"></div>
+                    </div>
+
+                    <div class="node-list">
+                        <h3>Nodes to Allocate (in order)</h3>
+                        <div class="tabs">
+                            <button class="tab active" data-tab="keystones">Keystones</button>
+                            <button class="tab" data-tab="notables">Notables</button>
+                            <button class="tab" data-tab="small">Small Nodes</button>
+                        </div>
+                        <div id="nodeListContent" class="node-list-content"></div>
+                    </div>
+
+                    <div class="export-section">
+                        <h3>Export Build</h3>
+                        <button id="exportPoB" class="btn-secondary">Copy PoB Code</button>
+                        <button id="exportJson" class="btn-secondary">Download JSON</button>
+                        <button id="exportUrl" class="btn-secondary">Copy Share URL</button>
+                    </div>
+                </div>
+
+                <div id="noDataWarning" class="warning-box">
+                    <h3>⚠️ Sample Data Mode</h3>
+                    <p>This tool is running with sample/mock data. For accurate results, you'll need to import real POE2 passive tree data.</p>
+                    <p>The tree data structure is ready to accept data from:</p>
+                    <ul>
+                        <li>Path of Building POE2 (tree.json)</li>
+                        <li>POE2DB API</li>
+                        <li>Official GGG exports when available</li>
+                    </ul>
+                    <button id="loadDataBtn" class="btn-secondary">Load Tree Data (JSON)</button>
+                    <input type="file" id="dataFileInput" accept=".json" class="hidden">
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>POE2 Passive Tree Optimizer v1.0</p>
+            <p>Not affiliated with Grinding Gear Games. Data sourced from community tools.</p>
+            <p><a href="https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2" target="_blank">Get tree data from PoB</a></p>
+        </footer>
+    </div>
+
+    <script src="js/data.js"></script>
+    <script src="js/optimizer.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
