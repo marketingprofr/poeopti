@@ -169,63 +169,50 @@ const POE2Data = {
     },
     
     /**
-     * Get class for ascendancy - with flexible mapping
+     * Get class for ascendancy - POE2 mapping
      */
     getClassForAscendancy: function(ascendancy) {
         const asc = ascendancy?.toLowerCase();
         
-        // Standard POE2 mapping
-        const standardMap = {
-            'titan': 'warrior', 'warbringer': 'warrior',
-            'bloodmage': 'witch', 'infernalist': 'witch',
-            'deadeye': 'ranger', 'pathfinder': 'ranger',
-            'witchhunter': 'mercenary', 'gemlinglegionnaire': 'mercenary',
-            'chronomancer': 'sorceress', 'stormweaver': 'sorceress',
-            'acolyte': 'witch', 'invoker': 'monk',
-            'chayuladisciple': 'monk', 'invokermonk': 'monk'
+        // POE2 ascendancy to class mapping
+        const map = {
+            // Warrior ascendancies
+            'titan': 'warrior', 
+            'warbringer': 'warrior',
+            // Marauder ascendancies  
+            'bloodmage': 'marauder', 
+            'infernalist': 'marauder',
+            // Ranger ascendancies
+            'deadeye': 'ranger', 
+            'pathfinder': 'ranger',
+            // Mercenary ascendancies
+            'witchhunter': 'mercenary', 
+            'gemling legionnaire': 'mercenary',
+            'gemlinglegionnaire': 'mercenary',
+            // Sorceress ascendancies
+            'chronomancer': 'sorceress', 
+            'stormweaver': 'sorceress',
+            // Witch ascendancies
+            'blood mage': 'witch',
+            'infernalist': 'witch',
+            'acolyte': 'witch', 
+            // Monk ascendancies
+            'invoker': 'monk',
+            'acolyte of chayula': 'monk',
+            'chayula disciple': 'monk'
         };
         
-        let className = standardMap[asc];
+        let className = map[asc];
         
-        // If we have the class in our loaded data, use it
+        // If found and exists in our loaded data, return it
         if (className && this.classStartNodes[className]) {
             return className;
         }
         
-        // Fallback mappings - some tree.json files use different names
-        // Map POE2 classes to POE1-style names if needed
-        const fallbackMap = {
-            'warrior': 'marauder',  // Warrior might be called Marauder in some trees
-            'sorceress': 'witch',   // Sorceress might map to Witch area
-            'mercenary': 'ranger',  // Mercenary might be near Ranger
-            'monk': 'witch'         // Monk might be near Witch
-        };
-        
-        if (className && fallbackMap[className] && this.classStartNodes[fallbackMap[className]]) {
-            console.log(`Mapping ${className} -> ${fallbackMap[className]} (fallback)`);
-            return fallbackMap[className];
-        }
-        
-        // Direct ascendancy to available class mapping
-        const directMap = {
-            'titan': 'marauder', 'warbringer': 'marauder',
-            'bloodmage': 'witch', 'infernalist': 'witch',
-            'deadeye': 'ranger', 'pathfinder': 'ranger',
-            'witchhunter': 'ranger', 'gemlinglegionnaire': 'ranger',
-            'chronomancer': 'witch', 'stormweaver': 'witch',
-            'acolyte': 'witch', 'invoker': 'witch',
-            'chayuladisciple': 'witch', 'invokermonk': 'witch'
-        };
-        
-        if (directMap[asc] && this.classStartNodes[directMap[asc]]) {
-            console.log(`Using direct fallback: ${asc} -> ${directMap[asc]}`);
-            return directMap[asc];
-        }
-        
-        // Last resort: return first available class
+        // If not found, return first available
         const available = Object.keys(this.classStartNodes);
         if (available.length > 0) {
-            console.log(`No mapping found for ${ascendancy}, using first available: ${available[0]}`);
+            console.log(`No mapping for ${ascendancy}, using first available: ${available[0]}`);
             return available[0];
         }
         
@@ -310,100 +297,26 @@ const POE2Data = {
     findClassStarts: function(data, nodes) {
         console.log("=== FINDING CLASS STARTS ===");
         
-        // Debug: what's in data.classes?
-        if (data.classes) {
-            console.log("data.classes exists, type:", typeof data.classes, "isArray:", Array.isArray(data.classes));
-            console.log("data.classes length:", data.classes.length);
-            data.classes.forEach((cls, idx) => {
-                console.log(`Class[${idx}]:`, JSON.stringify(cls).substring(0, 200));
-            });
-        } else {
-            console.log("data.classes does NOT exist");
-        }
+        // POE2 format: nodes have a "classesStart" property with array of class names
+        // e.g. "47175": {"classesStart": ["Marauder", "Warrior"]}
         
-        // Debug: what's in data.root?
-        if (data.root) {
-            console.log("data.root exists:", JSON.stringify(data.root).substring(0, 300));
-        }
-        
-        // Debug: check nodes.root
-        if (nodes.root) {
-            console.log("nodes.root exists:", JSON.stringify(nodes.root).substring(0, 300));
-        }
-        
-        // 1. Check for classes array
-        if (data.classes && Array.isArray(data.classes)) {
-            data.classes.forEach((cls, idx) => {
-                // Try multiple possible property names for start node
-                const startNode = cls.startNode || cls.start_node || cls.startNodeId;
-                const className = (cls.name || cls.className || cls.class_name || '').toLowerCase();
-                
-                console.log(`Parsing class[${idx}]: name="${className}", startNode=${startNode}`);
-                
-                if (startNode && className) {
-                    this.classStartNodes[className] = String(startNode);
-                } else if (startNode) {
-                    // No name, use index-based fallback
-                    const classNames = ['warrior', 'marauder', 'ranger', 'mercenary', 'sorceress', 'witch', 'monk'];
-                    if (classNames[idx]) {
-                        this.classStartNodes[classNames[idx]] = String(startNode);
-                        console.log(`Using index-based name: ${classNames[idx]}`);
-                    }
-                }
-            });
+        Object.keys(nodes).forEach(nodeId => {
+            const node = nodes[nodeId];
+            if (!node || typeof node !== 'object') return;
             
-            if (Object.keys(this.classStartNodes).length > 0) {
-                console.log("Found class starts from classes array:", this.classStartNodes);
-                return;
+            // Check for classesStart property
+            if (node.classesStart && Array.isArray(node.classesStart)) {
+                node.classesStart.forEach(className => {
+                    const normalizedName = className.toLowerCase();
+                    this.classStartNodes[normalizedName] = String(nodeId);
+                    console.log(`Found class start: ${className} -> node ${nodeId}`);
+                });
             }
-        }
+        });
         
-        // 2. Check for root.out combined with classes for names
-        if (data.root && data.root.out && Array.isArray(data.root.out)) {
-            console.log("Trying root.out approach, length:", data.root.out.length);
-            
-            const classNames = ['warrior', 'marauder', 'ranger', 'mercenary', 'sorceress', 'witch', 'monk'];
-            
-            data.root.out.forEach((nodeId, idx) => {
-                let className = null;
-                
-                // Try to get name from classes array
-                if (data.classes && data.classes[idx]) {
-                    className = (data.classes[idx].name || data.classes[idx].className || '').toLowerCase();
-                }
-                
-                // Fallback to index-based name
-                if (!className && classNames[idx]) {
-                    className = classNames[idx];
-                }
-                
-                if (className) {
-                    this.classStartNodes[className] = String(nodeId);
-                    console.log(`root.out[${idx}] = ${nodeId} -> ${className}`);
-                }
-            });
-            
-            if (Object.keys(this.classStartNodes).length > 0) {
-                console.log("Found class starts from root.out:", this.classStartNodes);
-                return;
-            }
-        }
-        
-        // 3. Check nodes for root entry
-        if (nodes.root && nodes.root.out) {
-            console.log("Trying nodes.root.out approach");
-            const classNames = ['warrior', 'marauder', 'ranger', 'mercenary', 'sorceress', 'witch', 'monk'];
-            
-            nodes.root.out.forEach((nodeId, idx) => {
-                if (classNames[idx]) {
-                    this.classStartNodes[classNames[idx]] = String(nodeId);
-                }
-            });
-            
-            if (Object.keys(this.classStartNodes).length > 0) {
-                console.log("Found class starts from nodes.root:", this.classStartNodes);
-                return;
-            }
+        if (Object.keys(this.classStartNodes).length > 0) {
+            console.log("Found class starts:", this.classStartNodes);
+            return;
         }
         
         console.error("FAILED to find class starts!");
