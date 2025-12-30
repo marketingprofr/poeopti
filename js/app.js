@@ -367,10 +367,42 @@ const App = {
         const results = TreeOptimizer.results;
         const nodeList = TreeOptimizer.exportNodeList();
         
-        // DEBUG: Log the node list
+        // DEBUG: Validate that nodes are connected
         console.log("=== POB EXPORT DEBUG ===");
         console.log("Allocated IDs count:", results.allocatedIds.size);
-        console.log("Allocated IDs (first 20):", [...results.allocatedIds].slice(0, 20));
+        
+        // Check connectivity - each node (except start) should connect to another allocated node
+        const allocatedSet = results.allocatedIds;
+        const startNode = TreeOptimizer.config.startNodeId;
+        let disconnectedNodes = [];
+        let connectedNodes = [];
+        
+        allocatedSet.forEach(nodeId => {
+            if (nodeId === startNode) {
+                connectedNodes.push(nodeId);
+                return;
+            }
+            const neighbors = POE2Data.getNeighbors(nodeId);
+            const hasAllocatedNeighbor = neighbors.some(n => allocatedSet.has(n));
+            if (hasAllocatedNeighbor) {
+                connectedNodes.push(nodeId);
+            } else {
+                disconnectedNodes.push(nodeId);
+            }
+        });
+        
+        console.log("Start node:", startNode);
+        console.log("Connected nodes:", connectedNodes.length);
+        console.log("DISCONNECTED nodes:", disconnectedNodes.length, disconnectedNodes.slice(0, 10));
+        
+        if (disconnectedNodes.length > 0) {
+            console.warn("WARNING: Some nodes are not connected to other allocated nodes!");
+        }
+        
+        // Verify start node has connections
+        const startNeighbors = POE2Data.getNeighbors(startNode);
+        console.log("Start node neighbors:", startNeighbors.length, startNeighbors.slice(0, 10));
+        
         console.log("Node list for export:", nodeList.substring(0, 200) + "...");
         console.log("Node list total count:", nodeList.split(',').length);
         console.log("Class name:", TreeOptimizer.config.className);
