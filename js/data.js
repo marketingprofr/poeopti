@@ -331,6 +331,13 @@ const POE2Data = {
         let smallCount = 0;
         let travelCount = 0;
         
+        // DEBUG: Log first few nodes to see structure
+        const nodeKeys = Object.keys(nodes).slice(0, 5);
+        console.log("=== SAMPLE NODE STRUCTURES ===");
+        nodeKeys.forEach(key => {
+            console.log(`Node ${key}:`, JSON.stringify(nodes[key]).substring(0, 500));
+        });
+        
         Object.keys(nodes).forEach(nodeId => {
             // Skip non-object entries and root
             const rawNode = nodes[nodeId];
@@ -363,9 +370,14 @@ const POE2Data = {
             // Extract tags
             const tags = this.extractTags(stats, icon, rawNode);
             
-            // Get connections - POE format uses 'out' array, other formats use 'connections'
-            const outConnections = rawNode.out || rawNode.connections || [];
-            const connectionIds = this.extractConnectionIds(outConnections);
+            // Get connections - check various property names
+            let allConnections = [];
+            ['out', 'connections', 'in', 'neighbours', 'linked', 'edges'].forEach(prop => {
+                if (rawNode[prop] && Array.isArray(rawNode[prop])) {
+                    allConnections = allConnections.concat(rawNode[prop]);
+                }
+            });
+            const connectionIds = this.extractConnectionIds(allConnections);
             
             const node = {
                 id: String(nodeId),
@@ -413,16 +425,17 @@ const POE2Data = {
     extractConnectionIds: function(connections) {
         if (!connections) return [];
         
-        // Handle array of {id, orbit} objects
+        // Handle array of {id, orbit} objects or plain numbers
         if (Array.isArray(connections)) {
-            return connections.map(c => {
-                if (typeof c === 'object' && c.id !== undefined) {
+            const result = connections.map(c => {
+                if (typeof c === 'object' && c !== null && c.id !== undefined) {
                     return String(c.id);
                 } else if (typeof c === 'number' || typeof c === 'string') {
                     return String(c);
                 }
                 return null;
             }).filter(id => id !== null);
+            return result;
         }
         
         return [];
@@ -453,6 +466,24 @@ const POE2Data = {
         // Get all class start node IDs to potentially filter cross-class connections
         const classStartSet = new Set(Object.values(this.classStartNodes));
         
+        // DEBUG: Test extractConnectionIds with sample data
+        console.log("=== TESTING extractConnectionIds ===");
+        const testConn1 = [{"id":62677,"orbit":2147483647}];
+        const testConn2 = [{"id":38003,"orbit":4},{"id":28361,"orbit":-4}];
+        console.log("Test 1:", this.extractConnectionIds(testConn1));
+        console.log("Test 2:", this.extractConnectionIds(testConn2));
+        
+        // DEBUG: Check a class start node's connections in RAW data
+        console.log("=== RAW NODE CONNECTION CHECK ===");
+        Object.entries(this.classStartNodes).forEach(([cls, nodeId]) => {
+            const node = nodes[nodeId];
+            if (node) {
+                console.log(`Class start ${cls} (${nodeId}) raw connections:`, JSON.stringify(node.connections));
+            } else {
+                console.log(`Class start ${cls} (${nodeId}) - NODE NOT FOUND IN RAW DATA`);
+            }
+        });
+        
         // First pass: collect all connections
         Object.keys(nodes).forEach(nodeId => {
             // SKIP the root node - it connects all class starts together
@@ -461,9 +492,18 @@ const POE2Data = {
             const rawNode = nodes[nodeId];
             if (!rawNode || typeof rawNode !== 'object') return;
             
-            // POE format uses 'out' array, other formats might use 'connections'
-            const outConnections = rawNode.out || rawNode.connections || [];
-            const connectionIds = this.extractConnectionIds(outConnections);
+            // POE format uses 'out' array, other formats might use 'connections' or 'in'
+            // Some formats also use 'neighbours', 'linked', etc.
+            let allConnections = [];
+            
+            // Check various property names for connections
+            ['out', 'connections', 'in', 'neighbours', 'linked', 'edges'].forEach(prop => {
+                if (rawNode[prop] && Array.isArray(rawNode[prop])) {
+                    allConnections = allConnections.concat(rawNode[prop]);
+                }
+            });
+            
+            const connectionIds = this.extractConnectionIds(allConnections);
             
             if (!this.connections[nodeId]) {
                 this.connections[nodeId] = [];
@@ -485,7 +525,10 @@ const POE2Data = {
             });
         });
         
+        console.log(`First pass: ${connectionCount} one-way connections`);
+        
         // Second pass: make bidirectional
+        let reverseCount = 0;
         const nodeIds = Object.keys(this.connections);
         nodeIds.forEach(nodeId => {
             const neighbors = [...this.connections[nodeId]];
@@ -497,9 +540,12 @@ const POE2Data = {
                 }
                 if (!this.connections[targetId].includes(nodeId)) {
                     this.connections[targetId].push(nodeId);
+                    reverseCount++;
                 }
             });
         });
+        
+        console.log(`Second pass: added ${reverseCount} reverse connections`);
         
         // Create stub nodes for missing node IDs (needed for pathfinding)
         missingNodes.forEach(nodeId => {
@@ -539,8 +585,15 @@ const POE2Data = {
             }
         });
         
-        console.log(`Built ${connectionCount} connections across ${Object.keys(this.connections).length} nodes`);
+        console.log(`Built ${connectionCount + reverseCount} total connections across ${Object.keys(this.connections).length} nodes`);
         console.log(`Created ${missingNodes.size} stub nodes for pathfinding`);
+        
+        // DEBUG: Show connections for class start nodes AFTER building
+        console.log("=== CLASS START CONNECTIONS (FINAL) ===");
+        Object.entries(this.classStartNodes).forEach(([cls, nodeId]) => {
+            const conns = this.connections[nodeId] || [];
+            console.log(`Class ${cls} start node ${nodeId} has ${conns.length} connections:`, conns.slice(0, 10));
+        });
     },
     
     /**

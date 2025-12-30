@@ -138,13 +138,34 @@ const TreeOptimizer = {
         while (this.results.totalPoints < this.config.maxPoints && iterations < maxIterations) {
             iterations++;
             
+            // Debug first 5 iterations
+            if (iterations <= 5) {
+                console.log(`\n--- Iteration ${iterations} ---`);
+                console.log("Allocated nodes:", [...this.results.allocatedIds].slice(0, 10));
+            }
+            
             const bestTarget = this.findBestTarget();
             if (!bestTarget) {
                 console.log("No more good targets found after", iterations, "iterations");
+                // Debug: show what nodes are adjacent to allocated
+                const adjacentNodes = new Set();
+                this.results.allocatedIds.forEach(id => {
+                    POE2Data.getNeighbors(id).forEach(n => {
+                        if (!this.results.allocatedIds.has(n)) adjacentNodes.add(n);
+                    });
+                });
+                console.log("Adjacent unallocated nodes:", adjacentNodes.size);
                 break;
             }
             
+            if (iterations <= 5) {
+                console.log("Best target:", bestTarget.id, bestTarget.name, "score:", bestTarget.score?.toFixed(2));
+            }
+            
             if (!this.pathToNode(bestTarget.id)) {
+                if (iterations <= 5) {
+                    console.log("Failed to path to", bestTarget.id);
+                }
                 continue;
             }
         }
