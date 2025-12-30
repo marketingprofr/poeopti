@@ -367,6 +367,14 @@ const App = {
         const results = TreeOptimizer.results;
         const nodeList = TreeOptimizer.exportNodeList();
         
+        // DEBUG: Log the node list
+        console.log("=== POB EXPORT DEBUG ===");
+        console.log("Allocated IDs count:", results.allocatedIds.size);
+        console.log("Allocated IDs (first 20):", [...results.allocatedIds].slice(0, 20));
+        console.log("Node list for export:", nodeList.substring(0, 200) + "...");
+        console.log("Node list total count:", nodeList.split(',').length);
+        console.log("Class name:", TreeOptimizer.config.className);
+        
         // Get keystones and notables for summary
         const keystones = results.allocatedNodes.filter(n => n.type === 'keystone' && !n.isStub);
         const notables = results.allocatedNodes.filter(n => n.type === 'notable' && !n.isStub);
@@ -384,6 +392,10 @@ const App = {
         };
         
         const classInfo = classMap[TreeOptimizer.config.className?.toLowerCase()] || { id: 0, internalId: 2, name: 'Ranger' };
+        
+        // Try to get tree version from loaded data
+        const treeVersion = POE2Data.treeVersion || "0_4";
+        console.log("Using tree version:", treeVersion);
         
         // Generate PoB2 XML in the exact format from a real export
         const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -406,7 +418,7 @@ Total Points: ${results.totalPoints}</Notes>
 	<TreeView searchStr="" showStatDifferences="true" zoomY="0" zoomX="0" zoomLevel="3"/>
 	<Import exportParty="false"/>
 	<Tree activeSpec="1">
-		<Spec ascendClassId="0" classId="${classInfo.id}" treeVersion="0_4" nodes="${nodeList}" secondaryAscendClassId="nil" ascendancyInternalId="" masteryEffects="" classInternalId="${classInfo.internalId}">
+		<Spec ascendClassId="0" classId="${classInfo.id}" treeVersion="${treeVersion}" nodes="${nodeList}" secondaryAscendClassId="nil" ascendancyInternalId="" masteryEffects="" classInternalId="${classInfo.internalId}">
 			<URL>
 				https://www.pathofexile.com/passive-skill-tree/AAAABgAAAAAA
 			</URL>
@@ -424,6 +436,11 @@ Total Points: ${results.totalPoints}</Notes>
         
         // Compress with zlib and encode to base64
         let pobCode = null;
+        
+        // DEBUG: Show the Spec line to verify nodes attribute
+        const specLine = xml.match(/<Spec[^>]*>/);
+        console.log("Spec element:", specLine ? specLine[0].substring(0, 300) : "NOT FOUND");
+        
         try {
             if (typeof pako !== 'undefined') {
                 // Compress with zlib (deflate with header, level 9)
@@ -449,9 +466,15 @@ Total Points: ${results.totalPoints}</Notes>
             this.copyToClipboard(pobCode);
         }
         
+        // Store XML for debug display
+        window._debugXML = xml;
+        
         // Show modal
         const modal = document.createElement('div');
         modal.className = 'export-modal';
+        
+        const xmlEscaped = xml.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        
         modal.innerHTML = `
             <div class="export-modal-content" style="max-width: 700px;">
                 <h3>📋 Export to Path of Building</h3>
@@ -479,6 +502,18 @@ Total Points: ${results.totalPoints}</Notes>
                 </div>
                 `}
                 
+                <div class="export-section" style="background: rgba(255,255,0,0.1); border: 1px solid #ff0; border-radius: 8px; padding: 15px; margin-top: 15px;">
+                    <h4 style="color: #ff0;">🔧 Debug: Raw Node IDs (${nodeList.split(',').length} nodes)</h4>
+                    <textarea readonly class="node-list-display" style="height: 60px; font-size: 10px;" id="rawNodeList">${nodeList}</textarea>
+                    <button class="btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('rawNodeList').value); App.showToast('Node list copied!');">Copy Node List</button>
+                    <p style="font-size: 11px; color: #888;">Class: ${classInfo.name} (id=${classInfo.id}, internalId=${classInfo.internalId}), TreeVersion: ${treeVersion}</p>
+                </div>
+                
+                <details style="margin-top: 15px;">
+                    <summary style="cursor: pointer; color: #888;">Show Raw XML (for debugging)</summary>
+                    <textarea readonly class="node-list-display" style="height: 150px; font-size: 9px; margin-top: 10px;" id="rawXmlArea"></textarea>
+                </details>
+                
                 <div class="export-section">
                     <h4>📊 Build Summary</h4>
                     <div style="color: var(--text-secondary);">
@@ -499,6 +534,12 @@ Total Points: ${results.totalPoints}</Notes>
             </div>
         `;
         document.body.appendChild(modal);
+        
+        // Populate XML textarea safely after DOM is ready
+        const xmlArea = document.getElementById('rawXmlArea');
+        if (xmlArea) {
+            xmlArea.value = xml;
+        }
         
         this.showToast(pobCode ? 'PoB code copied!' : 'Export generated');
     },

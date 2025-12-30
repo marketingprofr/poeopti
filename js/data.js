@@ -32,6 +32,9 @@ const POE2Data = {
     // Groups for positioning
     groups: {},
     
+    // Tree version for PoB export
+    treeVersion: "0_4",
+    
     // Raw JSON for debugging
     rawData: null,
     
@@ -47,6 +50,7 @@ const POE2Data = {
         this.classStartNodes = {};
         this.classReachableNodes = {};
         this.groups = {};
+        this.treeVersion = "0_4";
         this.rawData = null;
         this.isLoaded = false;
     },
@@ -255,6 +259,16 @@ const POE2Data = {
             if (jsonData.groups) {
                 this.groups = jsonData.groups;
             }
+            
+            // Extract tree version if present
+            if (jsonData.tree) {
+                this.treeVersion = jsonData.tree.replace(/\./g, '_');
+            } else if (jsonData.treeVersion) {
+                this.treeVersion = jsonData.treeVersion.replace(/\./g, '_');
+            } else if (jsonData.version) {
+                this.treeVersion = String(jsonData.version).replace(/\./g, '_');
+            }
+            console.log("Tree version:", this.treeVersion);
             
             // Find class start nodes
             this.findClassStarts(jsonData, nodes);
