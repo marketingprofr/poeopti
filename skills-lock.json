@@ -6,6 +6,12 @@
       "sourceType": "github",
       "skillPath": "skills/logo-creator/SKILL.md",
       "computedHash": "baac641dd2fb8b6e1aa658e8372c5e83672479e35553247d5ece4dd7917fa48c"
+    },
+    "nanobanana": {
+      "source": "resciencelab/opc-skills",
+      "sourceType": "github",
+      "skillPath": "skills/nanobanana/SKILL.md",
+      "computedHash": "b3ef6022c2d2b1be94fa2d52ae0da749495eef1fe4ea2becd413f052c03a13e6"
     }
   }
 }
